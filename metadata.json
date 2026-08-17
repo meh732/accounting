@@ -1,0 +1,6 @@
+{
+  "name": "حسابداری مه",
+  "description": "سامانه جامع و استاندارد حسابداری دوبل، فاکتورهای خرید و فروش با جستجوی هوشمند کالا و سرفصل‌ها، مدیریت جاری شرکا، تسویه چندگانه و بستن استاندارد سال مالی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
