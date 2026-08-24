@@ -13,7 +13,10 @@ import {
   CreditCard,
   Maximize2,
   Minimize2,
-  Menu
+  Menu,
+  Cloud,
+  RefreshCw,
+  Server
 } from 'lucide-react';
 import { getCurrentShamsiDate } from '../../utils/dateUtils';
 
@@ -37,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   onToggleMobileMenu,
 }) => {
-  const { settings, updateSettings, autoBackupSnapshots } = useAccounting();
+  const { settings, updateSettings, autoBackupSnapshots, serverSyncStatus, lastServerSyncTime, syncWithServer } = useAccounting();
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -146,6 +149,41 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Coins className="w-3.5 h-3.5 text-amber-500" />
             <span>واحد: {settings.currency}</span>
+          </button>
+
+          {/* Central Server Sync Status */}
+          <button
+            id="btn-server-sync-status"
+            onClick={() => syncWithServer()}
+            title={
+              serverSyncStatus === 'synced'
+                ? `دیتابیس متمرکز سرور - آخرین همگام‌سازی: ${lastServerSyncTime || 'لحظاتی پیش'}`
+                : serverSyncStatus === 'syncing'
+                ? 'در حال ذخیره و همگام‌سازی با سرور...'
+                : 'آفلاین / کلیک برای تلاش مجدد اتصال به سرور'
+            }
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs font-bold rounded-lg transition border ${
+              serverSyncStatus === 'synced'
+                ? 'bg-blue-50/80 text-blue-900 border-blue-200 hover:bg-blue-100'
+                : serverSyncStatus === 'syncing'
+                ? 'bg-amber-50 text-amber-900 border-amber-200 animate-pulse'
+                : 'bg-rose-50 text-rose-900 border-rose-200'
+            }`}
+          >
+            {serverSyncStatus === 'syncing' ? (
+              <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+            ) : serverSyncStatus === 'synced' ? (
+              <Cloud className="w-3.5 h-3.5 text-blue-600" />
+            ) : (
+              <Server className="w-3.5 h-3.5 text-rose-600" />
+            )}
+            <span className="hidden xl:inline text-[11px]">
+              {serverSyncStatus === 'synced'
+                ? 'سرور متمرکز (همگام)'
+                : serverSyncStatus === 'syncing'
+                ? 'در حال همگام‌سازی...'
+                : 'سرور آفلاین'}
+            </span>
           </button>
 
           {/* Backup & Restore Center Button */}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   AccountCategory,
   JournalVoucher,
@@ -122,6 +122,11 @@ interface AccountingContextType {
   exportSnapshotJSON: (snapshot: BackupSnapshot) => void;
   lastBackupTime: string | null;
   triggerBotBackupNow: () => Promise<BotSendResult[]>;
+
+  // Server & Multi-Computer Sync
+  serverSyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  lastServerSyncTime: string | null;
+  syncWithServer: () => Promise<void>;
 }
 
 const STORAGE_KEYS = {
@@ -264,7 +269,32 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   });
 
-  // Sync to localStorage
+  // 13. Auto-Backup Snapshots & Archive
+  const [autoBackupSnapshots, setAutoBackupSnapshots] = useState<BackupSnapshot[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.BACKUPS);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.LAST_BACKUP);
+    } catch {
+      return null;
+    }
+  });
+
+  // Server Synchronization State
+  const [serverSyncStatus, setServerSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
+  const [lastServerSyncTime, setLastServerSyncTime] = useState<string | null>(null);
+  const serverVersionRef = useRef<number>(1);
+  const isInitialLoadedRef = useRef<boolean>(false);
+  const isSavingToServerRef = useRef<boolean>(false);
+
+  // Sync to local storage as offline cache
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -336,6 +366,142 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem(STORAGE_KEYS.FIN_TX, JSON.stringify(financialTransactions));
     } catch (e) { console.error('Error saving financialTransactions', e); }
   }, [financialTransactions]);
+
+  // Load from Central Server on initial mount
+  const syncWithServer = async () => {
+    try {
+      setServerSyncStatus('syncing');
+      const res = await fetch('/api/data');
+      if (res.ok) {
+        const serverDb = await res.json();
+        if (serverDb && serverDb.settings) {
+          setSettings(serverDb.settings);
+          if (serverDb.accounts && serverDb.accounts.length > 0) {
+            setChartOfAccounts(serverDb.accounts);
+          }
+          setContacts(serverDb.contacts || []);
+          setBankAccounts(serverDb.bankAccounts || []);
+          setProductCategories(serverDb.categories || []);
+          setProducts(serverDb.products || []);
+          setInvoices(serverDb.invoices || []);
+          setVouchers(serverDb.vouchers || []);
+          setExpenses(serverDb.expenses || []);
+          setFinancialYears(serverDb.financialYears || []);
+          setCheques(serverDb.cheques || []);
+          setFinancialTransactions(serverDb.financialTransactions || []);
+          if (serverDb.backups) {
+            setAutoBackupSnapshots(serverDb.backups);
+          }
+
+          serverVersionRef.current = serverDb.version || 1;
+          setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
+          setServerSyncStatus('synced');
+        }
+      } else {
+        setServerSyncStatus('offline');
+      }
+    } catch (err) {
+      console.warn('Central server sync offline/unavailable:', err);
+      setServerSyncStatus('offline');
+    } finally {
+      isInitialLoadedRef.current = true;
+    }
+  };
+
+  useEffect(() => {
+    syncWithServer();
+  }, []);
+
+  // Save to Central Server whenever local changes happen
+  useEffect(() => {
+    if (!isInitialLoadedRef.current) return;
+
+    const timer = setTimeout(async () => {
+      if (isSavingToServerRef.current) return;
+      isSavingToServerRef.current = true;
+
+      try {
+        setServerSyncStatus('syncing');
+        const payload = {
+          settings,
+          accounts: chartOfAccounts,
+          contacts,
+          bankAccounts,
+          categories: productCategories,
+          products,
+          invoices,
+          vouchers,
+          expenses,
+          financialYears,
+          cheques,
+          financialTransactions,
+          backups: autoBackupSnapshots
+        };
+
+        const res = await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const resData = await res.json();
+          serverVersionRef.current = resData.version;
+          setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
+          setServerSyncStatus('synced');
+        } else {
+          setServerSyncStatus('error');
+        }
+      } catch (err) {
+        setServerSyncStatus('offline');
+      } finally {
+        isSavingToServerRef.current = false;
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [
+    settings,
+    chartOfAccounts,
+    contacts,
+    bankAccounts,
+    productCategories,
+    products,
+    invoices,
+    vouchers,
+    expenses,
+    financialYears,
+    cheques,
+    financialTransactions,
+    autoBackupSnapshots
+  ]);
+
+  // Periodic polling & tab focus synchronization across all devices and computers
+  useEffect(() => {
+    const checkServerVersion = async () => {
+      if (!isInitialLoadedRef.current || isSavingToServerRef.current) return;
+      try {
+        const res = await fetch('/api/version');
+        if (res.ok) {
+          const { version } = await res.json();
+          if (version && version > serverVersionRef.current) {
+            // Newer version detected on server (e.g. from another computer/user)
+            await syncWithServer();
+          }
+        }
+      } catch {
+        // silent
+      }
+    };
+
+    const interval = setInterval(checkServerVersion, 4000);
+    window.addEventListener('focus', checkServerVersion);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkServerVersion);
+    };
+  }, []);
 
   // Methods
   const updateSettings = (newSettings: Partial<CompanySettings>) => {
@@ -1426,24 +1592,6 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return true;
   };
 
-  // 10. Auto-Backup Snapshots & Archive
-  const [autoBackupSnapshots, setAutoBackupSnapshots] = useState<BackupSnapshot[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.BACKUPS);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEYS.LAST_BACKUP);
-    } catch {
-      return null;
-    }
-  });
-
   // Sync snapshots to storage
   useEffect(() => {
     try {
@@ -2037,7 +2185,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return voucher;
   };
 
-  const resetToDefaultData = () => {
+  const resetToDefaultData = async () => {
     // Save safety snapshot first!
     createBackupSnapshot('پیش از بازنشانی به پیش‌فرض کارخانه');
 
@@ -2053,6 +2201,14 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFinancialYears(defaultFinancialYears);
     setCheques(defaultCheques);
     setFinancialTransactions(defaultFinancialTransactions);
+
+    try {
+      await fetch('/api/reset', { method: 'POST' });
+      setServerSyncStatus('synced');
+      setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
+    } catch (err) {
+      console.error('Failed to reset on server:', err);
+    }
   };
 
   const exportDatabaseJSON = () => {
@@ -2171,6 +2327,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         exportSnapshotJSON,
         lastBackupTime,
         triggerBotBackupNow,
+        serverSyncStatus,
+        lastServerSyncTime,
+        syncWithServer,
       }}
     >
       {children}
