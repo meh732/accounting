@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Persian Accounting System - One-Line Installer Script
+# Persian Accounting System - Linux Server Management & Installation CLI
 # Repository: https://github.com/meh732/accounting.git
 # Run: bash <(curl -Ls https://raw.githubusercontent.com/meh732/accounting/main/install.sh)
 # ==============================================================================
@@ -15,46 +15,36 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m'
 
-clear
-echo -e "${CYAN}====================================================================${NC}"
-echo -e "${WHITE}    Persian Accounting System - Automatic Linux Installer (CLI)    ${NC}"
-echo -e "       ${YELLOW}Repository: https://github.com/meh732/accounting.git${NC}"
-echo -e "${CYAN}====================================================================${NC}\n"
-
 # Check root privileges
 if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}[ERROR] This script must be run as root or with sudo!${NC}"
+    echo -e "\n${RED}[ERROR] This script must be run as root or with sudo!${NC}\n"
     exit 1
 fi
 
 INSTALL_DIR="/var/www/accounting"
 BIN_PATH="/usr/local/bin/accounting"
 
-echo -e "${BLUE}[*] Checking and updating essential system packages...${NC}"
+echo -e "\n${BLUE}[*] Initializing environment and verifying basic tools (curl, wget, git, cron)...${NC}"
 if command -v apt-get &>/dev/null; then
-    apt-get update -qq
+    apt-get update -qq >/dev/null 2>&1
     apt-get install -y -qq curl wget git tar socat cron >/dev/null 2>&1
 elif command -v yum &>/dev/null; then
     yum install -y -q curl wget git tar socat crontabs >/dev/null 2>&1
 elif command -v dnf &>/dev/null; then
     dnf install -y -q curl wget git tar socat crontabs >/dev/null 2>&1
 fi
-echo -e "${GREEN}[✓] Base prerequisites ready.${NC}\n"
 
-# Download latest management script from GitHub
+# Download latest management CLI script from GitHub
 mkdir -p /tmp/accounting_installer
-echo -e "${BLUE}[*] Fetching latest accounting management script from GitHub...${NC}"
 curl -sSL https://raw.githubusercontent.com/meh732/accounting/main/accounting.sh -o /tmp/accounting_installer/accounting.sh
 chmod +x /tmp/accounting_installer/accounting.sh
 
-# Run install routine interactively with terminal TTY access
-if [ -t 0 ]; then
-    bash /tmp/accounting_installer/accounting.sh install
-elif [ -e /dev/tty ]; then
-    bash /tmp/accounting_installer/accounting.sh install < /dev/tty
+# Open interactive Main Menu directly
+if [ -e /dev/tty ]; then
+    bash /tmp/accounting_installer/accounting.sh < /dev/tty
 else
-    bash /tmp/accounting_installer/accounting.sh install
+    bash /tmp/accounting_installer/accounting.sh
 fi
 
-# Clean up
+# Clean temporary installer files
 rm -rf /tmp/accounting_installer
