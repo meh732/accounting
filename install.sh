@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Persian Accounting System - One-Line Installer Script (Sanaei Style)
+# Persian Accounting System - One-Line Installer Script
 # Repository: https://github.com/meh732/accounting.git
 # Run: bash <(curl -Ls https://raw.githubusercontent.com/meh732/accounting/main/install.sh)
 # ==============================================================================
@@ -17,20 +17,20 @@ NC='\033[0m'
 
 clear
 echo -e "${CYAN}====================================================================${NC}"
-echo -e "${WHITE}      سامانه حسابداری مَه - نصاب خودکار لینوکس (Persian Accounting)  ${NC}"
-echo -e "         ${YELLOW}Repository: https://github.com/meh732/accounting.git${NC}"
+echo -e "${WHITE}    Persian Accounting System - Automatic Linux Installer (CLI)    ${NC}"
+echo -e "       ${YELLOW}Repository: https://github.com/meh732/accounting.git${NC}"
 echo -e "${CYAN}====================================================================${NC}\n"
 
-# Check root
+# Check root privileges
 if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}[خطا / ERROR] لطفا این اسکریپت را با دسترسی root یا sudo اجرا کنید!${NC}"
+    echo -e "${RED}[ERROR] This script must be run as root or with sudo!${NC}"
     exit 1
 fi
 
 INSTALL_DIR="/var/www/accounting"
 BIN_PATH="/usr/local/bin/accounting"
 
-echo -e "${BLUE}[*] در حال آماده‌سازی و بررسی پیش‌نیازهای اولیه سیستم...${NC}"
+echo -e "${BLUE}[*] Checking and updating essential system packages...${NC}"
 if command -v apt-get &>/dev/null; then
     apt-get update -qq
     apt-get install -y -qq curl wget git tar socat cron >/dev/null 2>&1
@@ -39,11 +39,11 @@ elif command -v yum &>/dev/null; then
 elif command -v dnf &>/dev/null; then
     dnf install -y -q curl wget git tar socat crontabs >/dev/null 2>&1
 fi
-echo -e "${GREEN}[✓] پیش‌نیازهای پایه با موفقیت بررسی شدند.${NC}\n"
+echo -e "${GREEN}[✓] Base prerequisites ready.${NC}\n"
 
-# Download latest installer script
+# Download latest management script from GitHub
 mkdir -p /tmp/accounting_installer
-echo -e "${BLUE}[*] در حال دریافت آخرین نسخه اسکریپت مدیریت از گیت‌هاب...${NC}"
+echo -e "${BLUE}[*] Fetching latest accounting management script from GitHub...${NC}"
 curl -sSL https://raw.githubusercontent.com/meh732/accounting/main/accounting.sh -o /tmp/accounting_installer/accounting.sh
 chmod +x /tmp/accounting_installer/accounting.sh
 
@@ -56,5 +56,5 @@ else
     bash /tmp/accounting_installer/accounting.sh install
 fi
 
-# Clean temporary files
+# Clean up
 rm -rf /tmp/accounting_installer

@@ -24,10 +24,8 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 GIT_REPO="https://github.com/meh732/accounting.git"
 DEFAULT_PORT=3000
 BIN_PATH="/usr/local/bin/accounting"
-NGINX_CONF_DIR="/etc/nginx/sites-available"
-NGINX_CONF_ENABLED="/etc/nginx/sites-enabled"
 
-# Helper for robust interactive input reading (handles piped bash <(curl ...) properly)
+# Robust interactive input reading (handles piped bash <(curl ...) properly)
 read_input() {
     local prompt="$1"
     local var_name="$2"
@@ -48,7 +46,7 @@ read_input() {
 # Check root privileges
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}[خطا / ERROR] این اسکریپت باید با دسترسی root یا sudo اجرا شود.${NC}"
+        echo -e "${RED}[ERROR] This script must be run as root or with sudo.${NC}"
         exit 1
     fi
 }
@@ -69,7 +67,7 @@ get_configured_domain() {
     fi
 }
 
-# Print Header Banner
+# Print Header Banner in Clean English
 print_banner() {
     clear
     local server_ip
@@ -80,30 +78,30 @@ print_banner() {
     current_port=$(grep -Po 'PORT=\K[0-9]+' "${INSTALL_DIR}/.env" 2>/dev/null || echo "${DEFAULT_PORT}")
 
     echo -e "${CYAN}====================================================================${NC}"
-    echo -e "${WHITE}       سامانه حسابداری مَه - پنل مدیریت لینوکس (Persian Accounting)     ${NC}"
+    echo -e "${WHITE}          Persian Accounting System - Linux Server Manager          ${NC}"
     echo -e "${CYAN}====================================================================${NC}"
-    echo -e "  ${YELLOW}مخزن گیت‌هاب (GitHub):${NC} https://github.com/meh732/accounting.git"
-    echo -e "  ${YELLOW}مسیر نصب برنامه:${NC}      ${INSTALL_DIR}"
-    echo -e "  ${YELLOW}آی‌پی سرور (Server IP):${NC}  ${WHITE}${server_ip}${NC}"
+    echo -e "  ${YELLOW}GitHub Repo:${NC}     https://github.com/meh732/accounting.git"
+    echo -e "  ${YELLOW}Install Path:${NC}    ${INSTALL_DIR}"
+    echo -e "  ${YELLOW}Server IP:${NC}       ${WHITE}${server_ip}${NC}"
     
     if [ -n "$domain" ]; then
-        echo -e "  ${YELLOW}دامنه فعال (Domain):${NC}    ${GREEN}https://${domain}${NC}"
+        echo -e "  ${YELLOW}Active Domain:${NC}   ${GREEN}https://${domain}${NC}"
     fi
 
     # Status check
     if systemctl is-active --quiet "${SERVICE_NAME}"; then
-        echo -e "  ${YELLOW}وضعیت سرویس (Status):${NC}   ${GREEN}● فعال و در حال اجرا (Active)${NC} روی پورت ${WHITE}${current_port}${NC}"
+        echo -e "  ${YELLOW}Service Status:${NC}  ${GREEN}● Active (Running)${NC} on port ${WHITE}${current_port}${NC}"
     elif [[ -f "${SERVICE_FILE}" ]]; then
-        echo -e "  ${YELLOW}وضعیت سرویس (Status):${NC}   ${RED}● متوقف شده (Inactive)${NC}"
+        echo -e "  ${YELLOW}Service Status:${NC}  ${RED}● Inactive (Stopped)${NC}"
     else
-        echo -e "  ${YELLOW}وضعیت سرویس (Status):${NC}   ${YELLOW}● هنوز نصب نشده است (Not Installed)${NC}"
+        echo -e "  ${YELLOW}Service Status:${NC}  ${YELLOW}● Not Installed${NC}"
     fi
     echo -e "${CYAN}====================================================================${NC}"
 }
 
 # Detect OS and Package Manager
 install_prerequisites() {
-    echo -e "\n${BLUE}[*] در حال بررسی و نصب پکیج‌های پیش‌نیاز سیستم...${NC}"
+    echo -e "\n${BLUE}[*] Checking and installing required system packages...${NC}"
     if command -v apt-get &>/dev/null; then
         apt-get update -y
         apt-get install -y curl wget git tar build-essential nginx certbot python3-certbot-nginx socat cron
@@ -117,9 +115,9 @@ install_prerequisites() {
         dnf install -y curl wget git tar make gcc gcc-c++ nginx certbot python3-certbot-nginx socat crontabs
     fi
 
-    # Install Node.js v20 LTS if not present or < 18
+    # Install Node.js v20 LTS if missing or version < 18
     if ! command -v node &>/dev/null || [[ $(node -v | cut -d'.' -f1 | tr -d 'v') -lt 18 ]]; then
-        echo -e "${BLUE}[*] در حال نصب Node.js v20 LTS...${NC}"
+        echo -e "${BLUE}[*] Installing Node.js v20 LTS...${NC}"
         if command -v apt-get &>/dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
             apt-get install -y nodejs
@@ -133,14 +131,14 @@ install_prerequisites() {
         fi
     fi
 
-    echo -e "${GREEN}[✓] نسخه Node.js:${NC} $(node -v 2>/dev/null || echo 'N/A')"
-    echo -e "${GREEN}[✓] نسخه NPM:${NC}     $(npm -v 2>/dev/null || echo 'N/A')"
+    echo -e "${GREEN}[✓] Node.js Version:${NC} $(node -v 2>/dev/null || echo 'N/A')"
+    echo -e "${GREEN}[✓] NPM Version:${NC}     $(npm -v 2>/dev/null || echo 'N/A')"
 }
 
 # Create Systemd Service File
 create_systemd_service() {
     local port=${1:-$DEFAULT_PORT}
-    echo -e "${BLUE}[*] در حال ایجاد سرویس پس‌زمینه سیستم (${SERVICE_NAME})...${NC}"
+    echo -e "${BLUE}[*] Creating system background service (${SERVICE_NAME})...${NC}"
 
     cat <<EOF > "${SERVICE_FILE}"
 [Unit]
@@ -165,7 +163,7 @@ EOF
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1
     systemctl restart "${SERVICE_NAME}"
-    echo -e "${GREEN}[✓] سرویس سیستم با موفقیت ایجاد و فعال شد.${NC}"
+    echo -e "${GREEN}[✓] Systemd service successfully created and started.${NC}"
 }
 
 # Create Backup (Full archive with timestamp)
@@ -177,7 +175,7 @@ create_backup() {
     local backup_file="${BACKUP_DIR}/accounting_backup_${prefix}_${timestamp}.tar.gz"
 
     if [[ -d "${INSTALL_DIR}" ]]; then
-        echo -e "${BLUE}[*] در حال ایجاد نسخه پشتیبان (${prefix})...${NC}"
+        echo -e "${BLUE}[*] Creating backup archive (${prefix})...${NC}"
         tar --exclude="${INSTALL_DIR}/node_modules" \
             --exclude="${INSTALL_DIR}/.git" \
             --exclude="${INSTALL_DIR}/release" \
@@ -186,39 +184,39 @@ create_backup() {
         if [[ -f "${backup_file}" ]]; then
             local bsize
             bsize=$(du -h "${backup_file}" | cut -f1)
-            echo -e "${GREEN}[✓] نسخه پشتیبان با موفقیت ساخته شد:${NC} ${backup_file} (${bsize})"
+            echo -e "${GREEN}[✓] Backup archive created successfully:${NC} ${backup_file} (${bsize})"
             return 0
         else
-            echo -e "${RED}[خطا] ساخت فایل پشتیبان با مشکل مواجه شد.${NC}"
+            echo -e "${RED}[ERROR] Backup creation failed.${NC}"
             return 1
         fi
     else
-        echo -e "${YELLOW}[!] پوشه برنامه یافت نشد. پشتیبان‌گیری صرف‌نظر شد.${NC}"
+        echo -e "${YELLOW}[!] Installation folder not found. Skipped backup.${NC}"
         return 0
     fi
 }
 
-# Setup Nginx Domain & SSL Certificate (Let's Encrypt)
+# Setup Nginx Domain & Free SSL Certificate (Let's Encrypt)
 setup_domain_ssl() {
     print_banner
-    echo -e "${WHITE}=== تنظیم دامنه و گواهی رایگان SSL (Let's Encrypt) ===${NC}\n"
+    echo -e "${WHITE}=== Setup Domain & Free SSL (Let's Encrypt HTTPS) ===${NC}\n"
     
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo -e "${RED}[خطا] ابتدا باید سامانه حسابداری را نصب کنید (گزینه ۱).${NC}"
+        echo -e "${RED}[ERROR] Please install the accounting system first (Option 1).${NC}"
         return
     fi
 
     local current_port
     current_port=$(grep -Po 'PORT=\K[0-9]+' "${INSTALL_DIR}/.env" 2>/dev/null || echo "${DEFAULT_PORT}")
 
-    echo -e "${YELLOW}نکته مهم: قبل از ادامه، مطمئن شوید رکورد A دامنه خود را در کلودفلر یا پنل دامنه به آی‌پی سرور متصل کرده‌اید.${NC}"
-    echo -e "آی‌پی سرور شما: ${CYAN}$(get_server_ip)${NC}\n"
+    echo -e "${YELLOW}Notice: Make sure your Domain DNS (A record) points to this server's IP address.${NC}"
+    echo -e "Server IP: ${CYAN}$(get_server_ip)${NC}\n"
 
     local user_domain
-    read_input "لطفاً نام دامنه یا ساب‌دامنه خود را وارد کنید (مثال: panel.example.com): " user_domain ""
+    read_input "Enter your Domain / Subdomain (e.g., acc.example.com): " user_domain ""
     
     if [ -z "$user_domain" ]; then
-        echo -e "${RED}[خطا] نام دامنه نمی‌تواند خالی باشد.${NC}"
+        echo -e "${RED}[ERROR] Domain name cannot be empty.${NC}"
         return
     fi
 
@@ -226,9 +224,9 @@ setup_domain_ssl() {
     user_domain=$(echo "$user_domain" | tr -d ' ' | sed -e 's|^https://||' -e 's|^http://||' -e 's|/$||')
 
     local user_email
-    read_input "ایمیل جهت دریافت هشدارهای انقضای گواهی (یا اینتر برای پیش‌فرض): " user_email "admin@${user_domain}"
+    read_input "Enter email address for SSL renewal alerts [press Enter for default]: " user_email "admin@${user_domain}"
 
-    echo -e "\n${BLUE}[*] در حال نصب و تنظیم Nginx Reverse Proxy...${NC}"
+    echo -e "\n${BLUE}[*] Configuring Nginx Reverse Proxy...${NC}"
     if command -v apt-get &>/dev/null; then
         apt-get install -y nginx certbot python3-certbot-nginx
     elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
@@ -269,13 +267,13 @@ EOF
 
     nginx -t >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        echo -e "${RED}[خطا] پیکربندی Nginx معتبر نیست.${NC}"
+        echo -e "${RED}[ERROR] Nginx configuration test failed.${NC}"
         nginx -t
         return
     fi
     systemctl reload nginx
 
-    echo -e "${BLUE}[*] در حال درخواست گواهی رایگان SSL از Let's Encrypt برای ${user_domain}...${NC}"
+    echo -e "${BLUE}[*] Requesting free SSL Certificate from Let's Encrypt for ${user_domain}...${NC}"
     certbot --nginx --non-interactive --agree-tos --email "${user_email}" -d "${user_domain}" --redirect
 
     if [ $? -eq 0 ]; then
@@ -290,43 +288,43 @@ EOF
         (crontab -l 2>/dev/null | grep -v "certbot renew"; echo "0 3 * * * certbot renew --quiet --renew-hook 'systemctl reload nginx'") | crontab -
 
         echo -e "\n${GREEN}====================================================================${NC}"
-        echo -e "${WHITE}   [✓] دامنه و گواهی امنیتی SSL با موفقیت فعال شد!                ${NC}"
+        echo -e "${WHITE}   [✓] Domain & Free SSL (HTTPS) successfully configured!         ${NC}"
         echo -e "${GREEN}====================================================================${NC}"
-        echo -e "  ${WHITE}آدرس امن سامانه:${NC} ${CYAN}https://${user_domain}${NC}"
-        echo -e "  ${WHITE}تمدید خودکار SSL:${NC} ${GREEN}فعال شد (روزانه ساعت ۳ صبح بررسی می‌شود)${NC}"
+        echo -e "  ${WHITE}Secure Web URL:${NC} ${CYAN}https://${user_domain}${NC}"
+        echo -e "  ${WHITE}Auto-Renewal:${NC}   ${GREEN}Active (Daily check at 03:00 AM)${NC}"
         echo -e "${GREEN}====================================================================${NC}\n"
     else
-        echo -e "${YELLOW}[!] صدور خودکار SSL توسط Certbot ناموفق بود.${NC}"
-        echo -e "ممکن است اتصال دامنه به این آی‌پی هنوز اعمال نشده باشد یا کلودفلر روشن باشد."
-        echo -e "آدرس بدون SSL فعال است: ${CYAN}http://${user_domain}${NC}"
+        echo -e "${YELLOW}[!] Automatic SSL request was not successful.${NC}"
+        echo -e "Check your DNS records or Cloudflare proxy settings."
+        echo -e "HTTP Access is available at: ${CYAN}http://${user_domain}${NC}"
     fi
 }
 
 # 1. Install Function
 install_app() {
     print_banner
-    echo -e "${WHITE}=== ۱. نصب سامانه حسابداری مَه بر روی لینوکس ===${NC}\n"
+    echo -e "${WHITE}=== 1. Install / Reinstall Accounting System ===${NC}\n"
 
     if [[ -d "${INSTALL_DIR}" ]] && systemctl is-active --quiet "${SERVICE_NAME}"; then
-        echo -e "${YELLOW}[!] برنامه در حال حاضر نصب بوده و در حال اجرا است.${NC}"
+        echo -e "${YELLOW}[!] Accounting system is already installed and running.${NC}"
         local confirm_reinstall
-        read_input "آیا مایلید مجدداً نصب و رونویسی شود؟ [y/N]: " confirm_reinstall "n"
+        read_input "Do you want to reinstall and overwrite? [y/N]: " confirm_reinstall "n"
         if [[ ! "${confirm_reinstall}" =~ ^[Yy]$ ]]; then
-            echo -e "${BLUE}[*] عملیات نصب لغو شد.${NC}"
+            echo -e "${BLUE}[*] Installation cancelled.${NC}"
             return
         fi
         create_backup "pre_reinstall"
     fi
 
     # Port selection
-    echo -e "${CYAN}تنظیم پورت سرور:${NC}"
+    echo -e "${CYAN}Web Port Configuration:${NC}"
     local custom_port
-    read_input "پورت مورد نظر را وارد فرمایید [پیش‌فرض: ${DEFAULT_PORT}]: " custom_port "${DEFAULT_PORT}"
+    read_input "Enter desired web port [Default: ${DEFAULT_PORT}]: " custom_port "${DEFAULT_PORT}"
     if [[ ! "${custom_port}" =~ ^[0-9]+$ ]] || [ "${custom_port}" -lt 1 ] || [ "${custom_port}" -gt 65535 ]; then
-        echo -e "${YELLOW}[!] پورت نامعتبر بود. از پورت پیش‌فرض ${DEFAULT_PORT} استفاده می‌شود.${NC}"
+        echo -e "${YELLOW}[!] Invalid port number. Using default: ${DEFAULT_PORT}${NC}"
         custom_port=$DEFAULT_PORT
     fi
-    echo -e "${GREEN}[✓] پورت انتخاب شده: ${custom_port}${NC}\n"
+    echo -e "${GREEN}[✓] Selected Port: ${custom_port}${NC}\n"
 
     install_prerequisites
 
@@ -334,7 +332,7 @@ install_app() {
     mkdir -p "${INSTALL_DIR}"
     mkdir -p "${BACKUP_DIR}"
 
-    echo -e "${BLUE}[*] در حال دریافت کدهای پروژه از گیت‌هاب (${GIT_REPO})...${NC}"
+    echo -e "${BLUE}[*] Fetching source code from GitHub (${GIT_REPO})...${NC}"
     if [[ -d "${INSTALL_DIR}/.git" ]]; then
         cd "${INSTALL_DIR}" || exit 1
         git fetch --all
@@ -354,10 +352,10 @@ HOST=0.0.0.0
 NODE_ENV=production
 EOF
 
-    echo -e "${BLUE}[*] در حال نصب وابستگی‌های NPM (ممکن است چند لحظه طول بکشد)...${NC}"
+    echo -e "${BLUE}[*] Installing Node.js packages (this may take a minute)...${NC}"
     npm install --production=false
 
-    echo -e "${BLUE}[*] در حال ساخت خروجی نهایی پروژه (Build)...${NC}"
+    echo -e "${BLUE}[*] Building production assets (npm run build)...${NC}"
     npm run build
 
     # Create global shortcut command
@@ -371,41 +369,41 @@ EOF
     server_ip=$(get_server_ip)
 
     echo -e "\n${GREEN}====================================================================${NC}"
-    echo -e "${WHITE}   [✓] سامانه حسابداری مَه با موفقیت نصب و راه‌اندازی شد!         ${NC}"
+    echo -e "${WHITE}   [✓] Persian Accounting System Installed & Running!            ${NC}"
     echo -e "${GREEN}====================================================================${NC}"
-    echo -e "  ${WHITE}آدرس دسترسی:${NC}     ${CYAN}http://${server_ip}:${custom_port}${NC}"
-    echo -e "  ${WHITE}آدرس لوکال:${NC}      ${CYAN}http://localhost:${custom_port}${NC}"
-    echo -e "  ${WHITE}دستور مدیریت:${NC}    در هر جای ترمینال بنویسید: ${YELLOW}accounting${NC}"
+    echo -e "  ${WHITE}Web URL:${NC}         ${CYAN}http://${server_ip}:${custom_port}${NC}"
+    echo -e "  ${WHITE}Local Access:${NC}    ${CYAN}http://localhost:${custom_port}${NC}"
+    echo -e "  ${WHITE}Management CLI:${NC}  Type ${YELLOW}accounting${NC} anywhere in terminal"
     echo -e "${GREEN}====================================================================${NC}\n"
 
     # Ask for Domain & SSL Setup right away
     local ask_ssl
-    read_input "آیا مایلید هم‌اکنون دامنه و گواهی رایگان SSL (https) را تنظیم کنید؟ [y/N]: " ask_ssl "n"
+    read_input "Do you want to configure Domain & Free SSL (HTTPS) now? [y/N]: " ask_ssl "n"
     if [[ "${ask_ssl}" =~ ^[Yy]$ ]]; then
         setup_domain_ssl
     fi
 }
 
-# 2. Update Function (Auto-Backup first)
+# 2. Update Function (AUTOMATIC BACKUP BEFORE UPDATE)
 update_app() {
     print_banner
-    echo -e "${WHITE}=== ۲. به‌روزرسانی سامانه حسابداری مَه ===${NC}\n"
+    echo -e "${WHITE}=== 2. Update System to Latest Version (with Auto-Backup) ===${NC}\n"
 
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo -e "${RED}[خطا] برنامه هنوز نصب نشده است. لطفا ابتدا گزینه ۱ را انتخاب فرمایید.${NC}"
+        echo -e "${RED}[ERROR] System is not installed yet. Please choose Option 1 first.${NC}"
         return
     fi
 
-    echo -e "${YELLOW}[!] قبل از به‌روزرسانی، یک نسخه پشتیبان کامل به طور خودکار گرفته می‌شود.${NC}"
+    echo -e "${YELLOW}[!] Creating automatic safety backup before updating...${NC}"
     create_backup "pre_update"
 
-    echo -e "\n${BLUE}[*] در حال دریافت آخرین تغییرات از مخزن گیت‌هاب...${NC}"
+    echo -e "\n${BLUE}[*] Pulling latest updates from GitHub repository...${NC}"
     cd "${INSTALL_DIR}" || exit 1
     git fetch --all
     git reset --hard origin/main
     git pull origin main
 
-    echo -e "${BLUE}[*] در حال به‌روزرسانی پکیج‌ها و Build مجدد پروژه...${NC}"
+    echo -e "${BLUE}[*] Updating NPM packages and rebuilding application...${NC}"
     npm install --production=false
     npm run build
 
@@ -417,7 +415,7 @@ update_app() {
     ln -sf "${INSTALL_DIR}/accounting.sh" "${BIN_PATH}"
     chmod +x "${INSTALL_DIR}/accounting.sh" "${INSTALL_DIR}/server.js" "${BIN_PATH}" 2>/dev/null
 
-    echo -e "${BLUE}[*] در حال راه‌اندازی مجدد سرویس...${NC}"
+    echo -e "${BLUE}[*] Restarting background system service...${NC}"
     systemctl daemon-reload
     systemctl restart "${SERVICE_NAME}"
 
@@ -427,33 +425,33 @@ update_app() {
     domain=$(get_configured_domain)
 
     echo -e "\n${GREEN}====================================================================${NC}"
-    echo -e "${WHITE}   [✓] سیستم با موفقیت به آخرین نسخه به‌روزرسانی شد!               ${NC}"
+    echo -e "${WHITE}   [✓] System successfully updated to the latest version!         ${NC}"
     echo -e "${GREEN}====================================================================${NC}"
     if [ -n "$domain" ]; then
-        echo -e "  ${WHITE}آدرس:${NC} ${CYAN}https://${domain}${NC}"
+        echo -e "  ${WHITE}Web URL:${NC} ${CYAN}https://${domain}${NC}"
     fi
-    echo -e "  ${WHITE}آدرس آی‌پی:${NC} ${CYAN}http://${server_ip}:${current_port}${NC}"
+    echo -e "  ${WHITE}Direct IP:${NC} ${CYAN}http://${server_ip}:${current_port}${NC}"
     echo -e "${GREEN}====================================================================${NC}\n"
 }
 
 # 3. Change Port Function
 change_port() {
     print_banner
-    echo -e "${WHITE}=== ۳. تغییر پورت وب سرور ===${NC}\n"
+    echo -e "${WHITE}=== 3. Change Web Port ===${NC}\n"
 
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo -e "${RED}[خطا] سامانه هنوز نصب نشده است.${NC}"
+        echo -e "${RED}[ERROR] Accounting system is not installed.${NC}"
         return
     fi
 
     local current_port
     current_port=$(grep -Po 'PORT=\K[0-9]+' "${INSTALL_DIR}/.env" 2>/dev/null || echo "${DEFAULT_PORT}")
-    echo -e "پورت فعلی برنامه: ${GREEN}${current_port}${NC}\n"
+    echo -e "Current Web Port: ${GREEN}${current_port}${NC}\n"
 
     local new_port
-    read_input "شماره پورت جدید را وارد کنید [1-65535]: " new_port ""
+    read_input "Enter new port number [1-65535]: " new_port ""
     if [[ ! "${new_port}" =~ ^[0-9]+$ ]] || [ "${new_port}" -lt 1 ] || [ "${new_port}" -gt 65535 ]; then
-        echo -e "${RED}[خطا] شماره پورت نامعتبر است.${NC}"
+        echo -e "${RED}[ERROR] Invalid port number.${NC}"
         return
     fi
 
@@ -466,90 +464,90 @@ change_port() {
     local server_ip
     server_ip=$(get_server_ip)
 
-    echo -e "\n${GREEN}[✓] پورت با موفقیت به ${new_port} تغییر یافت و سرویس مجدداً اجرا شد!${NC}"
-    echo -e "  ${WHITE}آدرس جدید:${NC} ${CYAN}http://${server_ip}:${new_port}${NC}\n"
+    echo -e "\n${GREEN}[✓] Port changed to ${new_port} and service restarted successfully!${NC}"
+    echo -e "  ${WHITE}New URL:${NC} ${CYAN}http://${server_ip}:${new_port}${NC}\n"
 }
 
 # 4. Remove Domain / SSL
 remove_domain_ssl() {
     print_banner
-    echo -e "${WHITE}=== حذف دامنه و بازگشت به حالت آی‌پی مستقیم ===${NC}\n"
+    echo -e "${WHITE}=== Remove Domain & HTTPS (Revert to Direct IP) ===${NC}\n"
     
     local domain
     domain=$(get_configured_domain)
     if [ -z "$domain" ]; then
-        echo -e "${YELLOW}[!] دامنه‌ای برای این سرور تنظیم نشده است.${NC}"
+        echo -e "${YELLOW}[!] No domain is currently configured.${NC}"
         return
     fi
 
-    echo -e "دامنه فعال فعلی: ${CYAN}${domain}${NC}"
+    echo -e "Active domain: ${CYAN}${domain}${NC}"
     local confirm
-    read_input "آیا از حذف این دامنه و غیرفعال‌سازی Nginx اطمینان دارید؟ [y/N]: " confirm "n"
+    read_input "Are you sure you want to remove this domain and Nginx config? [y/N]: " confirm "n"
     if [[ "${confirm}" =~ ^[Yy]$ ]]; then
         rm -f "/etc/nginx/conf.d/${domain}.conf" "/etc/nginx/sites-available/${domain}.conf" "/etc/nginx/sites-enabled/${domain}.conf"
         systemctl reload nginx 2>/dev/null
         sed -i "/DOMAIN=/d" "${INSTALL_DIR}/.env"
-        echo -e "${GREEN}[✓] دامنه با موفقیت حذف گردید.${NC}"
+        echo -e "${GREEN}[✓] Domain configuration removed successfully.${NC}"
     fi
 }
 
 # Service Control Functions
 start_service() {
-    echo -e "${BLUE}[*] در حال اجرای سرویس ${SERVICE_NAME}...${NC}"
+    echo -e "${BLUE}[*] Starting ${SERVICE_NAME} service...${NC}"
     systemctl start "${SERVICE_NAME}"
     if systemctl is-active --quiet "${SERVICE_NAME}"; then
-        echo -e "${GREEN}[✓] سرویس با موفقیت فعال شد.${NC}"
+        echo -e "${GREEN}[✓] Service is now active and running.${NC}"
     else
-        echo -e "${RED}[خطا] اجرای سرویس ناموفق بود. لاگ‌ها را بررسی کنید.${NC}"
+        echo -e "${RED}[ERROR] Failed to start service. Check logs.${NC}"
     fi
 }
 
 stop_service() {
-    echo -e "${BLUE}[*] در حال متوقف‌سازی سرویس ${SERVICE_NAME}...${NC}"
+    echo -e "${BLUE}[*] Stopping ${SERVICE_NAME} service...${NC}"
     systemctl stop "${SERVICE_NAME}"
-    echo -e "${YELLOW}[✓] سرویس متوقف شد.${NC}"
+    echo -e "${YELLOW}[✓] Service stopped.${NC}"
 }
 
 restart_service() {
-    echo -e "${BLUE}[*] در حال راه‌اندازی مجدد سرویس ${SERVICE_NAME}...${NC}"
+    echo -e "${BLUE}[*] Restarting ${SERVICE_NAME} service...${NC}"
     systemctl restart "${SERVICE_NAME}"
     if systemctl is-active --quiet "${SERVICE_NAME}"; then
-        echo -e "${GREEN}[✓] سرویس با موفقیت مجدداً راه‌اندازی شد.${NC}"
+        echo -e "${GREEN}[✓] Service restarted successfully.${NC}"
     else
-        echo -e "${RED}[خطا] اجرای سرویس ناموفق بود. لاگ‌ها را بررسی کنید.${NC}"
+        echo -e "${RED}[ERROR] Failed to restart service. Check logs.${NC}"
     fi
 }
 
 view_status() {
     print_banner
-    echo -e "${WHITE}=== وضعیت زنده سرویس (Systemd Status) ===${NC}\n"
+    echo -e "${WHITE}=== Systemd Service Status ===${NC}\n"
     systemctl status "${SERVICE_NAME}" --no-pager -l
 }
 
 view_logs() {
     print_banner
-    echo -e "${WHITE}=== مشاهده لاگ‌های زنده سرور (برای خروج Ctrl+C را بزنید) ===${NC}\n"
+    echo -e "${WHITE}=== Live Service Logs (Press Ctrl+C to exit) ===${NC}\n"
     journalctl -u "${SERVICE_NAME}" -f -n 50 --no-pager
 }
 
 # Manual Backup Function
 manual_backup() {
     print_banner
-    echo -e "${WHITE}=== ایجاد نسخه پشتیبان دستی از سیستم ===${NC}\n"
+    echo -e "${WHITE}=== Create Manual Backup Archive ===${NC}\n"
     create_backup "manual"
 }
 
 # Restore Backup Function
 restore_backup() {
     print_banner
-    echo -e "${WHITE}=== بازیابی نسخه پشتیبان ===${NC}\n"
+    echo -e "${WHITE}=== Restore Backup Archive ===${NC}\n"
 
     if [[ ! -d "${BACKUP_DIR}" ]] || [[ $(find "${BACKUP_DIR}" -name "*.tar.gz" | wc -l) -eq 0 ]]; then
-        echo -e "${YELLOW}[!] هیچ فایل پشتیبانی در مسیر ${BACKUP_DIR} یافت نشد.${NC}"
+        echo -e "${YELLOW}[!] No backup files found in ${BACKUP_DIR}.${NC}"
         return
     fi
 
-    echo -e "${CYAN}فایل‌های پشتیبان موجود:${NC}"
+    echo -e "${CYAN}Available Backup Archives:${NC}"
     local backups=()
     local i=1
     while IFS= read -r file; do
@@ -560,47 +558,47 @@ restore_backup() {
 
     echo ""
     local choice
-    read_input "شماره فایل پشتیبان جهت بازیابی را وارد کنید (یا 0 برای انصراف): " choice "0"
+    read_input "Enter backup number to restore (or 0 to cancel): " choice "0"
 
     if [[ "${choice}" =~ ^[0-9]+$ ]] && [ "${choice}" -ge 1 ] && [ "${choice}" -le "${#backups[@]}" ]; then
         local selected_file="${backups[$((choice - 1))]}"
-        echo -e "\n${RED}[هشدار] بازیابی بکاپ، فایل‌های فعلی برنامه را بازنویسی خواهد کرد.${NC}"
+        echo -e "\n${RED}[WARNING] Restoring a backup will overwrite current system files.${NC}"
         local confirm_restore
-        read_input "آیا از بازیابی اطمینان دارید؟ [y/N]: " confirm_restore "n"
+        read_input "Are you sure you want to proceed with restore? [y/N]: " confirm_restore "n"
         if [[ "${confirm_restore}" =~ ^[Yy]$ ]]; then
             create_backup "pre_restore"
             systemctl stop "${SERVICE_NAME}" 2>/dev/null
             tar -xzf "${selected_file}" -C "$(dirname "${INSTALL_DIR}")"
             systemctl start "${SERVICE_NAME}"
-            echo -e "\n${GREEN}[✓] سامانه با موفقیت از فایل $(basename "${selected_file}") بازیابی شد!${NC}"
+            echo -e "\n${GREEN}[✓] System successfully restored from $(basename "${selected_file}")!${NC}"
         else
-            echo -e "${BLUE}[*] عملیات بازیابی لغو شد.${NC}"
+            echo -e "${BLUE}[*] Restore cancelled.${NC}"
         fi
     else
-        echo -e "${BLUE}[*] انصراف.${NC}"
+        echo -e "${BLUE}[*] Cancelled.${NC}"
     fi
 }
 
-# Toggle Auto-Start
+# Toggle Auto-Start on Boot
 toggle_autostart() {
     print_banner
-    echo -e "${WHITE}=== تنظیم اجرای خودکار هنگام روشن شدن سیستم (Boot) ===${NC}\n"
+    echo -e "${WHITE}=== Toggle Auto-Start on System Boot ===${NC}\n"
 
     if systemctl is-enabled --quiet "${SERVICE_NAME}" 2>/dev/null; then
-        echo -e "وضعیت فعلی: ${GREEN}فعال (با بوت سیستم خودکار اجرا می‌شود)${NC}"
+        echo -e "Current Status: ${GREEN}Enabled (Starts automatically on system boot)${NC}"
         local ans
-        read_input "آیا مایلید اجرای خودکار غیرفعال شود؟ [y/N]: " ans "n"
+        read_input "Do you want to disable auto-start on boot? [y/N]: " ans "n"
         if [[ "${ans}" =~ ^[Yy]$ ]]; then
             systemctl disable "${SERVICE_NAME}"
-            echo -e "${YELLOW}[✓] اجرای خودکار در بوت غیرفعال شد.${NC}"
+            echo -e "${YELLOW}[✓] Auto-start on boot disabled.${NC}"
         fi
     else
-        echo -e "وضعیت فعلی: ${RED}غیرفعال${NC}"
+        echo -e "Current Status: ${RED}Disabled${NC}"
         local ans
-        read_input "آیا مایلید اجرای خودکار فعال شود؟ [y/N]: " ans "n"
+        read_input "Do you want to enable auto-start on boot? [y/N]: " ans "n"
         if [[ "${ans}" =~ ^[Yy]$ ]]; then
             systemctl enable "${SERVICE_NAME}"
-            echo -e "${GREEN}[✓] اجرای خودکار در بوت فعال شد.${NC}"
+            echo -e "${GREEN}[✓] Auto-start on boot enabled.${NC}"
         fi
     fi
 }
@@ -608,18 +606,16 @@ toggle_autostart() {
 # Configure Bots
 configure_bots() {
     print_banner
-    echo -e "${WHITE}=== تنظیم ربات‌های تلگرام و بله (Telegram & Bale Bots) ===${NC}\n"
+    echo -e "${WHITE}=== Configure Telegram & Bale Notification Bots ===${NC}\n"
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo -e "${RED}[خطا] سامانه هنوز نصب نشده است.${NC}"
+        echo -e "${RED}[ERROR] Accounting system is not installed.${NC}"
         return
     fi
     
-    echo -e "${YELLOW}توجه: برای دریافت وب‌هوک، سرور باید آی‌پی پابلیک یا دامنه داشته باشد.${NC}\n"
-    
     local tg_token
-    read_input "توکن ربات تلگرام (Telegram Bot Token): " tg_token ""
+    read_input "Telegram Bot Token (or press Enter to skip): " tg_token ""
     local bale_token
-    read_input "توکن ربات بله (Bale Bot Token): " bale_token ""
+    read_input "Bale Bot Token (or press Enter to skip): " bale_token ""
     
     if [ -n "$tg_token" ]; then
         if grep -q "TELEGRAM_BOT_TOKEN=" "${INSTALL_DIR}/.env"; then
@@ -638,7 +634,7 @@ configure_bots() {
     fi
     
     if [[ ! -f "/etc/systemd/system/accounting-bot.service" ]]; then
-        echo -e "${BLUE}[*] در حال ایجاد سرویس پس‌زمینه ربات‌ها...${NC}"
+        echo -e "${BLUE}[*] Creating bot background service...${NC}"
         cat <<EOF_BOT > /etc/systemd/system/accounting-bot.service
 [Unit]
 Description=Persian Accounting Telegram/Bale Bot
@@ -661,15 +657,15 @@ EOF_BOT
     
     systemctl enable accounting-bot >/dev/null 2>&1
     systemctl restart accounting-bot
-    echo -e "\n${GREEN}[✓] تنظیمات ربات‌ها ذخیره و سرویس با موفقیت فعال شد!${NC}\n"
+    echo -e "\n${GREEN}[✓] Bot settings saved and service started!${NC}\n"
 }
 
 # Export Windows Setup
 export_windows_setup() {
     print_banner
-    echo -e "${WHITE}=== خروجی فایل‌های نصبی ویندوز (Windows Setup Files) ===${NC}\n"
+    echo -e "${WHITE}=== Export Windows Executable / Setup Files ===${NC}\n"
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo -e "${RED}[خطا] سامانه هنوز نصب نشده است.${NC}"
+        echo -e "${RED}[ERROR] Accounting system is not installed.${NC}"
         return
     fi
     
@@ -679,79 +675,79 @@ export_windows_setup() {
     
     cp -r "${INSTALL_DIR}/windows_setup/"* "${export_dir}/" 2>/dev/null
     
-    echo -e "${GREEN}[✓] فایل‌های نصبی و اسکریپت‌های ویندوز در این مسیر قرار گرفتند:${NC}"
+    echo -e "${GREEN}[✓] Windows setup files and build scripts exported to:${NC}"
     echo -e "    ${WHITE}${export_dir}${NC}"
-    echo -e "\nمی‌توانید با SFTP / Termius / WinSCP این پوشه را روی ویندوز دانلود کنید."
+    echo -e "\nYou can download this folder to Windows using SFTP / Termius / WinSCP."
     ls -l "${export_dir}"
 }
 
-# Uninstall Function (Auto-Backup first)
+# 15. Uninstall Function (AUTOMATIC BACKUP BEFORE UNINSTALL)
 uninstall_app() {
     print_banner
-    echo -e "${RED}=== حذف کامل سامانه حسابداری مَه ===${NC}\n"
+    echo -e "${RED}=== 15. Uninstall Accounting System (with Auto-Backup) ===${NC}\n"
 
     if [[ ! -d "${INSTALL_DIR}" ]] && [[ ! -f "${SERVICE_FILE}" ]]; then
-        echo -e "${YELLOW}[!] برنامه‌ای بر روی این سرور یافت نشد.${NC}"
+        echo -e "${YELLOW}[!] No installation found on this server.${NC}"
         return
     fi
 
-    echo -e "${RED}[هشدار] این عملیات سرویس را متوقف کرده و تمامی کدهای برنامه را پاک می‌کند.${NC}"
+    echo -e "${RED}[WARNING] This will stop the service and remove all application code.${NC}"
     local confirm_uninstall
-    read_input "آیا از حذف کامل اطمینان دارید؟ [y/N]: " confirm_uninstall "n"
+    read_input "Are you sure you want to completely uninstall? [y/N]: " confirm_uninstall "n"
     if [[ ! "${confirm_uninstall}" =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}[*] عملیات حذف لغو شد.${NC}"
+        echo -e "${BLUE}[*] Uninstall cancelled.${NC}"
         return
     fi
 
-    echo -e "\n${YELLOW}[!] در حال ایجاد نسخه پشتیبان امنیتی قبل از حذف...${NC}"
+    echo -e "\n${YELLOW}[!] Creating automatic safety backup archive before removal...${NC}"
     create_backup "pre_uninstall"
 
-    echo -e "${BLUE}[*] در حال متوقف‌سازی سرویس...${NC}"
+    echo -e "${BLUE}[*] Stopping and disabling systemd service...${NC}"
     systemctl stop "${SERVICE_NAME}" 2>/dev/null
     systemctl disable "${SERVICE_NAME}" 2>/dev/null
     rm -f "${SERVICE_FILE}"
     systemctl daemon-reload
 
-    echo -e "${BLUE}[*] در حال حذف فایل‌های برنامه...${NC}"
+    echo -e "${BLUE}[*] Removing application directory and binary links...${NC}"
     rm -rf "${INSTALL_DIR}"
     rm -f "${BIN_PATH}"
 
     echo -e "\n${GREEN}====================================================================${NC}"
-    echo -e "${WHITE}   [✓] سامانه حسابداری با موفقیت از سرور حذف شد.                 ${NC}"
+    echo -e "${WHITE}   [✓] Persian Accounting successfully removed from server.       ${NC}"
     echo -e "${GREEN}====================================================================${NC}"
-    echo -e "  ${YELLOW}یادآوری:${NC} نسخه‌های پشتیبان به صورت امن در این مسیر ذخیره مانده‌اند:"
+    echo -e "  ${YELLOW}Notice:${NC} All safety backups are securely preserved in:"
     echo -e "          ${WHITE}${BACKUP_DIR}${NC}"
     echo -e "${GREEN}====================================================================${NC}\n"
 }
 
-# Main Interactive Menu Loop
+# Main Interactive Menu Loop (Standard English CLI)
 menu() {
     check_root
     while true; do
         print_banner
-        echo -e "${WHITE}  1.${NC}  نصب یا نصب مجدد سامانه (Install / Reinstall App)"
-        echo -e "${WHITE}  2.${NC}  ${CYAN}به‌روزرسانی به آخرین نسخه از گیت‌هاب (Update System)${NC}"
-        echo -e "${WHITE}  3.${NC}  ${GREEN}تنظیم دامنه و دریافت گواهی رایگان SSL (Domain & HTTPS)${NC}"
-        echo -e "${WHITE}  4.${NC}  تغییر پورت وب سرور (Change Web Port)"
-        echo -e "${WHITE}  5.${NC}  حذف دامنه و بازگشت به حالت آی‌پی (Remove Domain)"
+        echo -e "${WHITE}  1.${NC}  Install / Reinstall System (with custom Port & SSL)"
+        echo -e "${WHITE}  2.${NC}  ${CYAN}Update to Latest Version (with Auto-Backup)${NC}"
+        echo -e "${WHITE}  3.${NC}  ${GREEN}Setup Domain & Free SSL Certificate (HTTPS / Let's Encrypt)${NC}"
+        echo -e "${WHITE}  4.${NC}  Change Web Port"
+        echo -e "${WHITE}  5.${NC}  Remove Domain / Revert to Direct IP"
         echo -e "${CYAN}--------------------------------------------------------------------${NC}"
-        echo -e "${WHITE}  6.${NC}  راه‌اندازی مجدد سرویس (Restart Service)"
-        echo -e "${WHITE}  7.${NC}  توقف سرویس (Stop Service)"
-        echo -e "${WHITE}  8.${NC}  مشاهده وضعیت زنده سرویس (Service Status)"
-        echo -e "${WHITE}  9.${NC}  مشاهده لاگ‌های زنده سرور (Live Logs)"
+        echo -e "${WHITE}  6.${NC}  Restart Service"
+        echo -e "${WHITE}  7.${NC}  Stop Service"
+        echo -e "${WHITE}  8.${NC}  Check Service Status"
+        echo -e "${WHITE}  9.${NC}  View Live Server Logs"
         echo -e "${CYAN}--------------------------------------------------------------------${NC}"
-        echo -e "${WHITE} 10.${NC}  ایجاد نسخه پشتیبان کامل از داده‌ها (Backup Database)"
-        echo -e "${WHITE} 11.${NC}  بازیابی از فایل پشتیبان (Restore Backup)"
-        echo -e "${WHITE} 12.${NC}  تنظیم اجرای خودکار هنگام روشن شدن سرور (Auto-Start Boot)"
-        echo -e "${WHITE} 13.${NC}  تنظیم ربات‌های تلگرام و بله (Bots Configuration)"
-        echo -e "${WHITE} 14.${NC}  خروجی فایل‌های نصبی ویندوز (Export Windows Setup Files)"
-        echo -e "${WHITE} 15.${NC}  ${RED}حذف کامل سامانه از سرور (Uninstall App)${NC}"
+        echo -e "${WHITE} 10.${NC}  Create Manual Data Backup"
+        echo -e "${WHITE} 11.${NC}  Restore Data from Backup Archive"
+        echo -e "${WHITE} 12.${NC}  Toggle Auto-Start on System Boot"
+        echo -e "${WHITE} 13.${NC}  Configure Telegram & Bale Bots"
+        echo -e "${WHITE} 14.${NC}  Export Windows Setup & EXE Builders"
+        echo -e "${WHITE} 15.${NC}  ${RED}Uninstall System Completely (with Auto-Backup)${NC}"
         echo -e "${CYAN}--------------------------------------------------------------------${NC}"
-        echo -e "${WHITE}  0.${NC}  خروج از منو (Exit)"
+        echo -e "${WHITE}  0.${NC}  Exit"
         echo -e "${CYAN}====================================================================${NC}"
         
         local option
-        read_input "لطفاً شماره گزینه مورد نظر را وارد فرمایید [0-15]: " option ""
+        read_input "Please enter your choice [0-15]: " option ""
 
         case $option in
             1)  install_app ;;
@@ -769,13 +765,13 @@ menu() {
             13) configure_bots ;;
             14) export_windows_setup ;;
             15) uninstall_app ;;
-            0)  echo -e "\n${GREEN}با تشکر، خروج از برنامه.${NC}\n"; exit 0 ;;
-            *)  echo -e "\n${RED}[!] گزینه وارد شده نامعتبر است.${NC}" ;;
+            0)  echo -e "\n${GREEN}Thank you. Exiting.${NC}\n"; exit 0 ;;
+            *)  echo -e "\n${RED}[!] Invalid option selected.${NC}" ;;
         esac
 
         echo ""
         local enter_key
-        read_input "برای بازگشت به منوی اصلی کلید Enter را فشار دهید..." enter_key ""
+        read_input "Press Enter to return to main menu..." enter_key ""
     done
 }
 
