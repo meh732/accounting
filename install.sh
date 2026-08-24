@@ -152,10 +152,7 @@ create_systemd_service() {
     local port=${1:-$DEFAULT_PORT}
     echo -e "${BLUE}[*] Creating system background service (${SERVICE_NAME})...${NC}"
 
-    local entry_file="${INSTALL_DIR}/dist/server.cjs"
-    if [[ ! -f "${entry_file}" ]]; then
-        entry_file="${INSTALL_DIR}/server.js"
-    fi
+    local entry_file="${INSTALL_DIR}/server.js"
 
     cat <<EOF > "${SERVICE_FILE}"
 [Unit]
