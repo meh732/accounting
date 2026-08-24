@@ -11,6 +11,7 @@ import { ContactsView } from './components/contacts/ContactsView';
 import { BankAndCashView } from './components/bank/BankAndCashView';
 import { ProductsInventoryView } from './components/products/ProductsInventoryView';
 import { ExpensesView } from './components/expenses/ExpensesView';
+import { FinancialOperationsView } from './components/finance/FinancialOperationsView';
 import { FinancialReportsView } from './components/reports/FinancialReportsView';
 import { SettingsView } from './components/settings/SettingsView';
 
@@ -25,12 +26,13 @@ import {
   FileSpreadsheet,
   Users,
   Package,
+  Coins,
   Menu,
   Plus
 } from 'lucide-react';
 
 const AccountingApp: React.FC = () => {
-  const { invoices, vouchers, contacts, products } = useAccounting();
+  const { invoices, vouchers, contacts, products, cheques } = useAccounting();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -65,6 +67,7 @@ const AccountingApp: React.FC = () => {
           vouchersCount={vouchers.length}
           contactsCount={contacts.length}
           productsCount={products.length}
+          chequesCount={cheques.length}
           isOpenMobile={isMobileDrawerOpen}
           onCloseMobile={() => setIsMobileDrawerOpen(false)}
         />
@@ -81,6 +84,7 @@ const AccountingApp: React.FC = () => {
               />
             )}
 
+            {activeTab === 'finance' && <FinancialOperationsView />}
             {activeTab === 'invoices' && <InvoicesView />}
             {activeTab === 'vouchers' && <JournalVouchersView />}
             {activeTab === 'accounts' && <ChartOfAccountsView />}

@@ -11,7 +11,9 @@ import {
   CompanySettings,
   VoucherItem,
   BackupSnapshot,
-  FinancialYearInfo
+  FinancialYearInfo,
+  ChequeRecord,
+  FinancialTransaction
 } from '../types/accounting';
 import {
   defaultCompanySettings,
@@ -23,7 +25,9 @@ import {
   defaultInvoices,
   defaultJournalVouchers,
   defaultExpenses,
-  defaultFinancialYears
+  defaultFinancialYears,
+  defaultCheques,
+  defaultFinancialTransactions
 } from '../utils/defaultData';
 import { getCurrentShamsiDate } from '../utils/dateUtils';
 import { calculateTrialBalance } from '../utils/financialCalculations';
@@ -72,6 +76,22 @@ interface AccountingContextType {
   updateExpense: (id: string, exp: Partial<Expense>) => void;
   deleteExpense: (id: string) => boolean;
 
+  // Cheque & Treasury Management
+  cheques: ChequeRecord[];
+  addCheque: (chq: Omit<ChequeRecord, 'id' | 'createdAt'>) => ChequeRecord;
+  updateCheque: (id: string, chq: Partial<ChequeRecord>) => void;
+  deleteCheque: (id: string) => boolean;
+  passCheque: (id: string, bankAccountId: string, date?: string) => boolean;
+  bounceCheque: (id: string, date?: string, reason?: string) => boolean;
+  returnCheque: (id: string, date?: string) => boolean;
+
+  // Ready Financial Transactions (Receipts, Payments, Transfers)
+  financialTransactions: FinancialTransaction[];
+  addFinancialTransaction: (
+    tx: Omit<FinancialTransaction, 'id' | 'transactionNumber' | 'createdAt'> & { transactionNumber?: number }
+  ) => FinancialTransaction;
+  deleteFinancialTransaction: (id: string) => boolean;
+
   // Financial Year Management
   financialYears: FinancialYearInfo[];
   createNewFinancialYear: (year: string, title?: string) => FinancialYearInfo;
@@ -115,6 +135,8 @@ const STORAGE_KEYS = {
   YEARS: 'acc_financial_years_v1',
   BACKUPS: 'acc_backup_snapshots_v1',
   LAST_BACKUP: 'acc_last_backup_time_v1',
+  CHEQUES: 'acc_cheques_v1',
+  FIN_TX: 'acc_fin_tx_v1',
 };
 
 const AccountingContext = createContext<AccountingContextType | undefined>(undefined);
@@ -220,6 +242,26 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   });
 
+  // 11. Cheques (Treasury)
+  const [cheques, setCheques] = useState<ChequeRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CHEQUES);
+      return saved ? JSON.parse(saved) : defaultCheques;
+    } catch {
+      return defaultCheques;
+    }
+  });
+
+  // 12. Financial Transactions
+  const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.FIN_TX);
+      return saved ? JSON.parse(saved) : defaultFinancialTransactions;
+    } catch {
+      return defaultFinancialTransactions;
+    }
+  });
+
   // Sync to localStorage
   useEffect(() => {
     try {
@@ -280,6 +322,18 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem(STORAGE_KEYS.YEARS, JSON.stringify(financialYears));
     } catch (e) { console.error('Error saving financialYears', e); }
   }, [financialYears]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CHEQUES, JSON.stringify(cheques));
+    } catch (e) { console.error('Error saving cheques', e); }
+  }, [cheques]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FIN_TX, JSON.stringify(financialTransactions));
+    } catch (e) { console.error('Error saving financialTransactions', e); }
+  }, [financialTransactions]);
 
   // Methods
   const updateSettings = (newSettings: Partial<CompanySettings>) => {
@@ -741,6 +795,35 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    // Auto-sync cheques from invoice into central treasury cheques
+    if (createdInvoice.settlement?.chequePayments && createdInvoice.settlement.chequePayments.length > 0) {
+      const isSales = createdInvoice.type === 'sales' || createdInvoice.type === 'sales_return';
+      const newChequeRecords: ChequeRecord[] = createdInvoice.settlement.chequePayments
+        .filter((cp) => cp.amount > 0)
+        .map((cp, idx) => ({
+          id: `chq-inv-${createdInvoice.id}-${idx}`,
+          type: isSales ? 'receive' : 'payment',
+          chequeNumber: cp.chequeNumber,
+          sayadId: cp.sayadId || '',
+          bankName: cp.bankName || 'بانک',
+          branchName: cp.branchName || '',
+          amount: cp.amount,
+          issueDate: createdInvoice.date,
+          dueDate: cp.dueDate,
+          contactId: createdInvoice.contactId,
+          contactName: createdInvoice.contactName,
+          drawerName: cp.drawerName || createdInvoice.contactName,
+          status: 'pending',
+          voucherId: createdInvoice.voucherId,
+          invoiceId: createdInvoice.id,
+          createdAt: getCurrentShamsiDate(),
+        }));
+
+      if (newChequeRecords.length > 0) {
+        setCheques((prev) => [...newChequeRecords, ...prev]);
+      }
+    }
+
     setInvoices((prev) => [createdInvoice, ...prev]);
     return createdInvoice;
   };
@@ -774,6 +857,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (inv.voucherId) {
       setVouchers((prev) => prev.filter((v) => v.id !== inv.voucherId));
     }
+
+    // Remove connected cheques if any
+    setCheques((prev) => prev.filter((c) => c.invoiceId !== id));
 
     setInvoices((prev) => prev.filter((i) => i.id !== id));
     return true;
@@ -858,6 +944,483 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setVouchers((prev) => prev.filter((v) => v.id !== exp.voucherId));
     }
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    return true;
+  };
+
+  // 10. Cheques & Treasury Management
+  const addCheque = (chqData: Omit<ChequeRecord, 'id' | 'createdAt'>): ChequeRecord => {
+    const chqId = `chq-${Date.now()}`;
+    const createdCheque: ChequeRecord = {
+      ...chqData,
+      id: chqId,
+      createdAt: getCurrentShamsiDate(),
+    };
+
+    // Auto generate voucher for cheque if enabled
+    if (settings.autoGenerateVouchers) {
+      const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+      const nextVoucherNo = maxVoucherNumber + 1;
+
+      if (createdCheque.type === 'receive') {
+        // دریافت چک: بدهکار اسناد دریافتنی (10201) / بستانکار حساب‌های دریافتنی (10301)
+        const autoVch: JournalVoucher = {
+          id: `vch-chq-rec-${Date.now()}`,
+          voucherNumber: nextVoucherNo,
+          date: createdCheque.issueDate || getCurrentShamsiDate(),
+          gregorianDate: new Date().toISOString().split('T')[0],
+          description: `دریافت چک شماره ${createdCheque.chequeNumber} (سررسید: ${createdCheque.dueDate}) از ${createdCheque.contactName}`,
+          items: [
+            {
+              id: `vi-chq-rec-deb-${Date.now()}`,
+              accountCode: '10201',
+              accountTitle: 'اسناد دریافتنی تجاری (چک‌های نزد صندوق)',
+              tafsiliTitle: `چک ${createdCheque.bankName} - ${createdCheque.chequeNumber}`,
+              description: `دریافت چک صیادی شماره ${createdCheque.chequeNumber} از ${createdCheque.contactName}`,
+              debit: createdCheque.amount,
+              credit: 0,
+            },
+            {
+              id: `vi-chq-rec-crd-${Date.now()}`,
+              accountCode: '10301',
+              accountTitle: 'حساب‌های دریافتنی تجاری (مشتریان)',
+              tafsiliTitle: createdCheque.contactName,
+              contactId: createdCheque.contactId,
+              description: `تسویه حساب بابت دریافت چک سررسید ${createdCheque.dueDate}`,
+              debit: 0,
+              credit: createdCheque.amount,
+            },
+          ],
+          type: 'cheque_receive',
+          status: 'permanent',
+          isAutoGenerated: true,
+          sourceType: 'cheque',
+          sourceId: chqId,
+          createdAt: getCurrentShamsiDate(),
+        };
+
+        createdCheque.voucherId = autoVch.id;
+        setVouchers((prev) => [autoVch, ...prev]);
+      } else {
+        // صدور/پرداخت چک: بدهکار حساب‌های پرداختنی (30101) / بستانکار اسناد پرداختنی تجاری (30201)
+        const autoVch: JournalVoucher = {
+          id: `vch-chq-pay-${Date.now()}`,
+          voucherNumber: nextVoucherNo,
+          date: createdCheque.issueDate || getCurrentShamsiDate(),
+          gregorianDate: new Date().toISOString().split('T')[0],
+          description: `صدور چک شماره ${createdCheque.chequeNumber} (سررسید: ${createdCheque.dueDate}) در وجه ${createdCheque.contactName}`,
+          items: [
+            {
+              id: `vi-chq-pay-deb-${Date.now()}`,
+              accountCode: '30101',
+              accountTitle: 'حساب‌های پرداختنی تجاری (تامین‌کنندگان)',
+              tafsiliTitle: createdCheque.contactName,
+              contactId: createdCheque.contactId,
+              description: `پرداخت بابت تسویه بدهی با چک شماره ${createdCheque.chequeNumber}`,
+              debit: createdCheque.amount,
+              credit: 0,
+            },
+            {
+              id: `vi-chq-pay-crd-${Date.now()}`,
+              accountCode: '30201',
+              accountTitle: 'اسناد پرداختنی تجاری (چک‌های صادره)',
+              tafsiliTitle: createdCheque.bankAccountTitle || `چک ${createdCheque.bankName}`,
+              description: `صدور چک صیادی سررسید ${createdCheque.dueDate} در وجه ${createdCheque.contactName}`,
+              debit: 0,
+              credit: createdCheque.amount,
+            },
+          ],
+          type: 'cheque_payment',
+          status: 'permanent',
+          isAutoGenerated: true,
+          sourceType: 'cheque',
+          sourceId: chqId,
+          createdAt: getCurrentShamsiDate(),
+        };
+
+        createdCheque.voucherId = autoVch.id;
+        setVouchers((prev) => [autoVch, ...prev]);
+      }
+    }
+
+    setCheques((prev) => [createdCheque, ...prev]);
+    return createdCheque;
+  };
+
+  const updateCheque = (id: string, chqData: Partial<ChequeRecord>) => {
+    setCheques((prev) => prev.map((c) => (c.id === id ? { ...c, ...chqData } : c)));
+  };
+
+  const deleteCheque = (id: string) => {
+    const chq = cheques.find((c) => c.id === id);
+    if (!chq) return false;
+
+    // Delete linked vouchers
+    const voucherIdsToDelete = [chq.voucherId, chq.passedVoucherId, chq.bouncedVoucherId].filter(Boolean) as string[];
+    if (voucherIdsToDelete.length > 0) {
+      setVouchers((prev) => prev.filter((v) => !voucherIdsToDelete.includes(v.id)));
+    }
+
+    setCheques((prev) => prev.filter((c) => c.id !== id));
+    return true;
+  };
+
+  const passCheque = (id: string, bankAccountId: string, passDate?: string): boolean => {
+    const chq = cheques.find((c) => c.id === id);
+    if (!chq) return false;
+
+    const bank = bankAccounts.find((b) => b.id === bankAccountId);
+    const bankTitle = bank ? bank.title : 'حساب بانکی';
+    const opDate = passDate || getCurrentShamsiDate();
+
+    const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+    const nextVoucherNo = maxVoucherNumber + 1;
+
+    let passVoucher: JournalVoucher | null = null;
+
+    if (chq.type === 'receive') {
+      // وصول چک دریافتی: بدهکار بانک (10102) / بستانکار اسناد دریافتنی (10201)
+      passVoucher = {
+        id: `vch-chq-pass-${Date.now()}`,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        description: `وصول چک شماره ${chq.chequeNumber} (${chq.contactName}) و واریز به ${bankTitle}`,
+        items: [
+          {
+            id: `vi-pass-deb-${Date.now()}`,
+            accountCode: '10102',
+            accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliTitle: bankTitle,
+            description: `واریز وصولی چک شماره ${chq.chequeNumber} به ${bankTitle}`,
+            debit: chq.amount,
+            credit: 0,
+          },
+          {
+            id: `vi-pass-crd-${Date.now()}`,
+            accountCode: '10201',
+            accountTitle: 'اسناد دریافتنی تجاری (چک‌های نزد صندوق)',
+            tafsiliTitle: `چک ${chq.bankName} - ${chq.chequeNumber}`,
+            description: `خروج چک شماره ${chq.chequeNumber} از اسناد دریافتنی بابت وصول`,
+            debit: 0,
+            credit: chq.amount,
+          },
+        ],
+        type: 'cheque_pass',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'cheque',
+        sourceId: chq.id,
+        createdAt: getCurrentShamsiDate(),
+      };
+    } else {
+      // پاس شدن چک پرداختی: بدهکار اسناد پرداختنی (30201) / بستانکار بانک (10102)
+      passVoucher = {
+        id: `vch-chq-pay-pass-${Date.now()}`,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        description: `پاس شدن چک شماره ${chq.chequeNumber} در وجه ${chq.contactName} از حساب ${bankTitle}`,
+        items: [
+          {
+            id: `vi-paypass-deb-${Date.now()}`,
+            accountCode: '30201',
+            accountTitle: 'اسناد پرداختنی تجاری (چک‌های صادره)',
+            tafsiliTitle: chq.bankAccountTitle || bankTitle,
+            description: `پاس شدن چک صادره شماره ${chq.chequeNumber}`,
+            debit: chq.amount,
+            credit: 0,
+          },
+          {
+            id: `vi-paypass-crd-${Date.now()}`,
+            accountCode: '10102',
+            accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliTitle: bankTitle,
+            description: `برداشت از ${bankTitle} بابت پاس شدن چک شماره ${chq.chequeNumber}`,
+            debit: 0,
+            credit: chq.amount,
+          },
+        ],
+        type: 'cheque_pass',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'cheque',
+        sourceId: chq.id,
+        createdAt: getCurrentShamsiDate(),
+      };
+    }
+
+    if (passVoucher) {
+      setVouchers((prev) => [passVoucher!, ...prev]);
+    }
+
+    setCheques((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              status: 'passed',
+              passedDate: opDate,
+              passedBankId: bankAccountId,
+              passedBankTitle: bankTitle,
+              passedVoucherId: passVoucher?.id,
+            }
+          : c
+      )
+    );
+
+    return true;
+  };
+
+  const bounceCheque = (id: string, bounceDate?: string, reason?: string): boolean => {
+    const chq = cheques.find((c) => c.id === id);
+    if (!chq) return false;
+
+    const opDate = bounceDate || getCurrentShamsiDate();
+    const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+    const nextVoucherNo = maxVoucherNumber + 1;
+
+    let bounceVoucher: JournalVoucher | null = null;
+
+    if (chq.type === 'receive') {
+      // برگشت چک دریافتی: بدهکار حساب‌های دریافتنی (10301) / بستانکار اسناد دریافتنی (10201)
+      bounceVoucher = {
+        id: `vch-chq-bounce-${Date.now()}`,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        description: `برگشت/واخواست چک شماره ${chq.chequeNumber} طرف‌حساب ${chq.contactName}${reason ? ' (علت: ' + reason + ')' : ''}`,
+        items: [
+          {
+            id: `vi-bnc-deb-${Date.now()}`,
+            accountCode: '10301',
+            accountTitle: 'حساب‌های دریافتنی تجاری (مشتریان)',
+            tafsiliTitle: chq.contactName,
+            contactId: chq.contactId,
+            description: `احیای بدهی مشتری بابت برگشت چک شماره ${chq.chequeNumber}`,
+            debit: chq.amount,
+            credit: 0,
+          },
+          {
+            id: `vi-bnc-crd-${Date.now()}`,
+            accountCode: '10201',
+            accountTitle: 'اسناد دریافتنی تجاری (چک‌های نزد صندوق)',
+            tafsiliTitle: `چک ${chq.bankName} - ${chq.chequeNumber}`,
+            description: `خروج چک برگشتی شماره ${chq.chequeNumber} از اسناد در جریان وصول`,
+            debit: 0,
+            credit: chq.amount,
+          },
+        ],
+        type: 'cheque_bounce',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'cheque',
+        sourceId: chq.id,
+        createdAt: getCurrentShamsiDate(),
+      };
+    }
+
+    if (bounceVoucher) {
+      setVouchers((prev) => [bounceVoucher!, ...prev]);
+    }
+
+    setCheques((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              status: 'bounced',
+              notes: `${c.notes ? c.notes + ' | ' : ''}برگشت خورده در تاریخ ${opDate}${reason ? ': ' + reason : ''}`,
+              bouncedVoucherId: bounceVoucher?.id,
+            }
+          : c
+      )
+    );
+
+    return true;
+  };
+
+  const returnCheque = (id: string, returnDate?: string): boolean => {
+    const chq = cheques.find((c) => c.id === id);
+    if (!chq) return false;
+
+    const opDate = returnDate || getCurrentShamsiDate();
+
+    // If initial voucher existed, reverse or remove it
+    if (chq.voucherId) {
+      setVouchers((prev) => prev.filter((v) => v.id !== chq.voucherId));
+    }
+
+    setCheques((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              status: 'returned',
+              notes: `${c.notes ? c.notes + ' | ' : ''}استرداد شده در تاریخ ${opDate}`,
+            }
+          : c
+      )
+    );
+
+    return true;
+  };
+
+  // 11. Ready Financial Transactions (Receipt, Payment, Transfer)
+  const addFinancialTransaction = (
+    txData: Omit<FinancialTransaction, 'id' | 'transactionNumber' | 'createdAt'> & { transactionNumber?: number }
+  ): FinancialTransaction => {
+    const maxTxNumber = financialTransactions.length > 0 ? Math.max(...financialTransactions.map((t) => t.transactionNumber)) : 1000;
+    const newTxNumber = txData.transactionNumber || maxTxNumber + 1;
+    const txId = `ftx-${Date.now()}`;
+
+    const createdTx: FinancialTransaction = {
+      ...txData,
+      id: txId,
+      transactionNumber: newTxNumber,
+      createdAt: getCurrentShamsiDate(),
+    };
+
+    // Auto generate voucher for ready financial transaction
+    if (settings.autoGenerateVouchers) {
+      const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+      const nextVoucherNo = maxVoucherNumber + 1;
+
+      if (createdTx.type === 'receipt') {
+        // دریافت وجه: بدهکار صندوق/بانک مقصد | بستانکار طرف‌حساب/مشتری
+        const destAccountCode = createdTx.paymentMethod === 'cash' ? '10101' : createdTx.paymentMethod === 'pos' ? '10104' : '10102';
+        const destAccountTitle = createdTx.paymentMethod === 'cash' ? 'صندوق‌ها' : createdTx.paymentMethod === 'pos' ? 'دستگاه‌های کارتخوان (POS)' : 'حساب‌های بانکی ریالی';
+
+        const autoVch: JournalVoucher = {
+          id: `vch-tx-rec-${Date.now()}`,
+          voucherNumber: nextVoucherNo,
+          date: createdTx.date || getCurrentShamsiDate(),
+          gregorianDate: new Date().toISOString().split('T')[0],
+          description: `دریافت وجه (شماره ${createdTx.transactionNumber}) - ${createdTx.title}: ${createdTx.description}`,
+          items: [
+            {
+              id: `vi-tx-rec-deb-${Date.now()}`,
+              accountCode: destAccountCode,
+              accountTitle: destAccountTitle,
+              tafsiliTitle: createdTx.destinationAccountTitle || 'حساب دریافت',
+              description: `واریز وجه از ${createdTx.contactName || 'مشتری'}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
+              debit: createdTx.amount,
+              credit: 0,
+            },
+            {
+              id: `vi-tx-rec-crd-${Date.now()}`,
+              accountCode: '10301',
+              accountTitle: 'حساب‌های دریافتنی تجاری (مشتریان)',
+              tafsiliTitle: createdTx.contactName || 'طرف‌حساب',
+              contactId: createdTx.contactId,
+              description: createdTx.description || `تسویه حساب بابت دریافت وجه`,
+              debit: 0,
+              credit: createdTx.amount,
+            },
+          ],
+          type: 'receipt',
+          status: 'permanent',
+          isAutoGenerated: true,
+          sourceType: 'receipt',
+          sourceId: txId,
+          createdAt: getCurrentShamsiDate(),
+        };
+
+        createdTx.voucherId = autoVch.id;
+        setVouchers((prev) => [autoVch, ...prev]);
+      } else if (createdTx.type === 'payment') {
+        // پرداخت وجه: بدهکار طرف‌حساب/تامین‌کننده | بستانکار بانک/صندوق مبدا
+        const srcAccountCode = createdTx.paymentMethod === 'cash' ? '10101' : '10102';
+        const srcAccountTitle = createdTx.paymentMethod === 'cash' ? 'صندوق‌ها' : 'حساب‌های بانکی ریالی';
+
+        const autoVch: JournalVoucher = {
+          id: `vch-tx-pay-${Date.now()}`,
+          voucherNumber: nextVoucherNo,
+          date: createdTx.date || getCurrentShamsiDate(),
+          gregorianDate: new Date().toISOString().split('T')[0],
+          description: `پرداخت وجه (شماره ${createdTx.transactionNumber}) - ${createdTx.title}: ${createdTx.description}`,
+          items: [
+            {
+              id: `vi-tx-pay-deb-${Date.now()}`,
+              accountCode: '30101',
+              accountTitle: 'حساب‌های پرداختنی تجاری (تامین‌کنندگان)',
+              tafsiliTitle: createdTx.contactName || 'طرف‌حساب',
+              contactId: createdTx.contactId,
+              description: createdTx.description || `پرداخت به طرف‌حساب`,
+              debit: createdTx.amount,
+              credit: 0,
+            },
+            {
+              id: `vi-tx-pay-crd-${Date.now()}`,
+              accountCode: srcAccountCode,
+              accountTitle: srcAccountTitle,
+              tafsiliTitle: createdTx.sourceAccountTitle || 'حساب پرداخت',
+              description: `پرداخت به ${createdTx.contactName || 'طرف‌حساب'}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
+              debit: 0,
+              credit: createdTx.amount,
+            },
+          ],
+          type: 'payment',
+          status: 'permanent',
+          isAutoGenerated: true,
+          sourceType: 'payment',
+          sourceId: txId,
+          createdAt: getCurrentShamsiDate(),
+        };
+
+        createdTx.voucherId = autoVch.id;
+        setVouchers((prev) => [autoVch, ...prev]);
+      } else if (createdTx.type === 'transfer') {
+        // انتقال داخلی: بدهکار حساب مقصد | بستانکار حساب مبدا
+        const autoVch: JournalVoucher = {
+          id: `vch-tx-trf-${Date.now()}`,
+          voucherNumber: nextVoucherNo,
+          date: createdTx.date || getCurrentShamsiDate(),
+          gregorianDate: new Date().toISOString().split('T')[0],
+          description: `انتقال داخلی وجه: از ${createdTx.sourceAccountTitle} به ${createdTx.destinationAccountTitle}`,
+          items: [
+            {
+              id: `vi-tx-trf-deb-${Date.now()}`,
+              accountCode: '10102',
+              accountTitle: 'حساب‌های بانکی و صندوق',
+              tafsiliTitle: createdTx.destinationAccountTitle || 'حساب مقصد',
+              description: `واریز انتقالی از ${createdTx.sourceAccountTitle}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
+              debit: createdTx.amount,
+              credit: 0,
+            },
+            {
+              id: `vi-tx-trf-crd-${Date.now()}`,
+              accountCode: '10102',
+              accountTitle: 'حساب‌های بانکی و صندوق',
+              tafsiliTitle: createdTx.sourceAccountTitle || 'حساب مبدا',
+              description: `برداشت بابت انتقال به ${createdTx.destinationAccountTitle}`,
+              debit: 0,
+              credit: createdTx.amount,
+            },
+          ],
+          type: 'transfer',
+          status: 'permanent',
+          isAutoGenerated: true,
+          sourceType: 'transfer',
+          sourceId: txId,
+          createdAt: getCurrentShamsiDate(),
+        };
+
+        createdTx.voucherId = autoVch.id;
+        setVouchers((prev) => [autoVch, ...prev]);
+      }
+    }
+
+    setFinancialTransactions((prev) => [createdTx, ...prev]);
+    return createdTx;
+  };
+
+  const deleteFinancialTransaction = (id: string) => {
+    const tx = financialTransactions.find((t) => t.id === id);
+    if (!tx) return false;
+    if (tx.voucherId) {
+      setVouchers((prev) => prev.filter((v) => v.id !== tx.voucherId));
+    }
+    setFinancialTransactions((prev) => prev.filter((t) => t.id !== id));
     return true;
   };
 
@@ -1400,6 +1963,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setVouchers(defaultJournalVouchers);
     setExpenses(defaultExpenses);
     setFinancialYears(defaultFinancialYears);
+    setCheques(defaultCheques);
+    setFinancialTransactions(defaultFinancialTransactions);
   };
 
   const exportDatabaseJSON = () => {
@@ -1414,6 +1979,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       vouchers,
       expenses,
       financialYears,
+      cheques,
+      financialTransactions,
       exportDate: new Date().toISOString(),
       shamsiDate: getCurrentShamsiDate(),
       version: '1.0.0',
@@ -1443,6 +2010,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (parsed.vouchers) setVouchers(parsed.vouchers);
         if (parsed.expenses) setExpenses(parsed.expenses);
         if (parsed.financialYears) setFinancialYears(parsed.financialYears);
+        if (parsed.cheques) setCheques(parsed.cheques);
+        if (parsed.financialTransactions) setFinancialTransactions(parsed.financialTransactions);
         return true;
       }
       return false;
@@ -1488,6 +2057,16 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addExpense,
         updateExpense,
         deleteExpense,
+        cheques,
+        addCheque,
+        updateCheque,
+        deleteCheque,
+        passCheque,
+        bounceCheque,
+        returnCheque,
+        financialTransactions,
+        addFinancialTransaction,
+        deleteFinancialTransaction,
         financialYears,
         createNewFinancialYear,
         closeFinancialYear,

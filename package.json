@@ -1,14 +1,57 @@
 {
-  "name": "react-example",
+  "name": "hesabdari-meh",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "main": "electron-main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist dist-server release",
+    "lint": "tsc --noEmit",
+    "start:server": "node server.cjs",
+    "start:electron": "electron .",
+    "dist:client": "vite build && electron-builder --win --x64",
+    "dist:client:dir": "vite build && electron-builder --win --dir",
+    "dist:server": "esbuild server.cjs --bundle --platform=node --target=node18 --outfile=dist-server/server.cjs && pkg dist-server/server.cjs --target node18-win-x64 --output dist-server/Hesabdari-Meh-Server.exe",
+    "dist:all": "npm run dist:client && npm run dist:server"
+  },
+  "build": {
+    "appId": "ir.hesabdarimeh.app",
+    "productName": "Hesabdari-Meh",
+    "copyright": "Copyright © 2026 Hesabdari Meh",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "حسابداری مَه"
+    }
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,13 +66,16 @@
     "motion": "^12.23.24"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@yao-pkg/pkg": "^6.22.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3",
-    "@types/express": "^4.17.21"
+    "vite": "^6.2.3"
   }
 }

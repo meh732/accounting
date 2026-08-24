@@ -10,11 +10,13 @@ import {
   ArrowDownCircle,
   BarChart3,
   Settings,
+  Coins,
   X
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
+  | 'finance'
   | 'invoices'
   | 'vouchers'
   | 'accounts'
@@ -32,6 +34,7 @@ interface SidebarProps {
   vouchersCount: number;
   contactsCount: number;
   productsCount: number;
+  chequesCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -43,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   vouchersCount,
   contactsCount,
   productsCount,
+  chequesCount,
   isOpenMobile = false,
   onCloseMobile,
 }) => {
@@ -57,6 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard',
       title: 'داشبورد مدیریت',
       icon: LayoutDashboard,
+    },
+    {
+      id: 'finance',
+      title: 'امور مالی، دریافت، پرداخت و چک',
+      icon: Coins,
+      badge: chequesCount,
+      color: 'text-amber-500',
     },
     {
       id: 'invoices',
@@ -143,10 +154,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Desktop App Title banner */}
         <div className="p-4 border-b border-slate-800/80 bg-slate-950/40 flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-400">
-              سیستم حسابداری مالی
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
+              حسابداری مَه
             </span>
-            <div className="text-sm font-bold text-white tracking-wide">نسخه دسکتاپ و وب نوین</div>
+            <div className="text-xs font-medium text-slate-300 tracking-wide mt-0.5">
+              مدیریت یکپارچه مالی و انبار
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5">

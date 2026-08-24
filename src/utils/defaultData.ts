@@ -8,7 +8,9 @@ import {
   Invoice,
   Expense,
   CompanySettings,
-  FinancialYearInfo
+  FinancialYearInfo,
+  ChequeRecord,
+  FinancialTransaction
 } from '../types/accounting';
 import { getCurrentShamsiDate } from './dateUtils';
 
@@ -986,3 +988,113 @@ export const defaultJournalVouchers: JournalVoucher[] = [
     ]
   }
 ];
+
+export const defaultCheques: ChequeRecord[] = [
+  {
+    id: 'chq-1',
+    type: 'receive',
+    chequeNumber: '784512',
+    sayadNumber: '1403058963254101',
+    bankName: 'بانک ملت',
+    branchName: 'شعبه ونک',
+    amount: 15000000,
+    issueDate: '1403/05/10',
+    dueDate: '1403/06/15',
+    contactId: 'c-2',
+    contactName: 'آقای دکتر علی محمدی',
+    drawerName: 'علی محمدی',
+    status: 'pending',
+    notes: 'دریافت بابت تسویه فاکتور فروش',
+    voucherId: 'vch-103',
+    createdAt: '1403/05/10',
+  },
+  {
+    id: 'chq-2',
+    type: 'receive',
+    chequeNumber: '336214',
+    sayadNumber: '2541023698741250',
+    bankName: 'بانک صادرات',
+    branchName: 'شعبه مرکزی',
+    amount: 25000000,
+    issueDate: '1403/05/15',
+    dueDate: '1403/07/20',
+    contactId: 'c-4',
+    contactName: 'شرکت پایا صنعت البرز',
+    drawerName: 'پایا صنعت البرز',
+    status: 'pending',
+    notes: 'چک صیادی بابت پیش‌پرداخت قرارداد',
+    createdAt: '1403/05/15',
+  },
+  {
+    id: 'chq-3',
+    type: 'payment',
+    chequeNumber: '554102',
+    sayadNumber: '9854120365897412',
+    bankName: 'بانک ملت',
+    branchName: 'شعبه اسکان',
+    amount: 30000000,
+    issueDate: '1403/05/05',
+    dueDate: '1403/06/30',
+    contactId: 'c-1',
+    contactName: 'شرکت بازرگانی پارس آریا',
+    bankAccountId: 'b-1',
+    bankAccountTitle: 'بانک ملت - جاری اصلی شرکت',
+    status: 'pending',
+    notes: 'صدور چک بابت خرید کالای بازرگانی فاکتور خرید',
+    voucherId: 'vch-102',
+    createdAt: '1403/05/05',
+  }
+];
+
+export const defaultFinancialTransactions: FinancialTransaction[] = [
+  {
+    id: 'ftx-1',
+    transactionNumber: 1001,
+    type: 'receipt',
+    date: '1403/05/12',
+    amount: 20000000,
+    title: 'دریافت وجه از طرف‌حساب',
+    description: 'دریافت واریزی به حساب ملت بابت مانده حساب مشتری',
+    contactId: 'c-2',
+    contactName: 'آقای دکتر علی محمدی',
+    destinationAccountId: 'b-1',
+    destinationAccountTitle: 'بانک ملت - جاری اصلی شرکت',
+    paymentMethod: 'bank',
+    trackingNumber: 'TRX-982145',
+    voucherId: 'vch-103',
+    createdAt: '1403/05/12',
+  },
+  {
+    id: 'ftx-2',
+    transactionNumber: 1002,
+    type: 'payment',
+    date: '1403/05/14',
+    amount: 12000000,
+    title: 'پرداخت به تامین‌کننده',
+    description: 'حواله پایا از بانک ملت بابت فاکتور خرید مواد اولیه',
+    contactId: 'c-1',
+    contactName: 'شرکت بازرگانی پارس آریا',
+    sourceAccountId: 'b-1',
+    sourceAccountTitle: 'بانک ملت - جاری اصلی شرکت',
+    paymentMethod: 'bank',
+    trackingNumber: 'PAYA-658210',
+    createdAt: '1403/05/14',
+  },
+  {
+    id: 'ftx-3',
+    transactionNumber: 1003,
+    type: 'transfer',
+    date: '1403/05/16',
+    amount: 5000000,
+    title: 'انتقال از صندوق به بانک',
+    description: 'واریز وجوه نقدی صندوق فروشگاه به حساب جاری بانک ملت',
+    sourceAccountId: 'b-4',
+    sourceAccountTitle: 'صندوق نقدی مرکزی شرکت',
+    destinationAccountId: 'b-1',
+    destinationAccountTitle: 'بانک ملت - جاری اصلی شرکت',
+    paymentMethod: 'cash',
+    trackingNumber: 'DEP-44120',
+    createdAt: '1403/05/16',
+  }
+];
+

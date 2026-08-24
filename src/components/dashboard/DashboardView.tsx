@@ -44,6 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     bankAccounts,
     contacts,
     vouchers,
+    cheques,
     settings
   } = useAccounting();
 
@@ -71,22 +72,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // 3. Low stock alerts (products below reorder point)
   const lowStockProducts = products.filter((p) => p.stockQuantity <= p.reorderPoint);
 
-  // 4. Pending Cheques
-  const pendingCheques: { invoiceNo: number; type: string; chequeNumber: string; amount: number; dueDate: string; bank: string }[] = [];
-  invoices.forEach((inv) => {
-    inv.settlement.chequePayments
-      .filter((ch) => ch.status === 'pending')
-      .forEach((ch) => {
-        pendingCheques.push({
-          invoiceNo: inv.invoiceNumber,
-          type: inv.type === 'sales' ? 'دریافتی' : 'پرداختی',
-          chequeNumber: ch.chequeNumber,
-          amount: ch.amount,
-          dueDate: ch.dueDate,
-          bank: ch.bankName,
-        });
-      });
-  });
+  // 4. Pending Cheques from treasury cheques and invoices
+  const pendingChequesList = cheques.filter((c) => c.status === 'pending');
 
   // 5. Recent Invoices
   const recentInvoices = invoices.slice(0, 5);
@@ -97,18 +84,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 mb-2">
-            <span>سامانه یکپارچه حسابداری دوبل</span>
+            <span>سامانه حسابداری مَه - نسخه جامع</span>
           </div>
           <h2 className="text-xl md:text-2xl font-bold tracking-tight">
-            مرکز کنترل و عملکرد مالی {settings.companyName}
+            مرکز کنترل و عملیات مالی {settings.companyName}
           </h2>
           <p className="text-slate-300 text-xs mt-1 max-w-xl">
-            مدیریت آسان خرید و فروش، اسناد مالی استاندارد، کنترل نقدینگی، کاردکس انبار و طرف‌حساب‌ها
+            مدیریت آسان خرید و فروش، اسناد دوبل استاندارد، دریافت و پرداخت، خزانه‌داری، چک‌های صیادی و انبار
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            id="dash-btn-open-finance"
+            onClick={() => onNavigate('finance')}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-lg shadow-amber-400/20 transition transform hover:-translate-y-0.5"
+          >
+            <DollarSign className="w-4 h-4 text-amber-950" />
+            <span>امور مالی و چک</span>
+          </button>
           <button
             id="dash-btn-new-invoice"
             onClick={onOpenInvoiceModal}
@@ -130,7 +125,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onClick={onOpenExpenseModal}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
           >
-            <DollarSign className="w-4 h-4 text-amber-400" />
+            <ArrowDownLeft className="w-4 h-4 text-rose-400" />
             <span>ثبت هزینه</span>
           </button>
         </div>
@@ -369,30 +364,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
                 <Clock className="w-4 h-4" />
-                <span>چک‌های در جریان وصول و پرداخت</span>
+                <span>چک‌های در جریان و سررسید</span>
               </div>
-              <span className="text-[11px] text-slate-500">
-                {pendingCheques.length} فقره
-              </span>
+              <button
+                onClick={() => onNavigate('finance')}
+                className="text-[11px] text-indigo-600 hover:underline font-bold"
+              >
+                امور مالی ({toPersianDigits(pendingChequesList.length)})
+              </button>
             </div>
 
-            {pendingCheques.length === 0 ? (
+            {pendingChequesList.length === 0 ? (
               <div className="text-center py-4 text-xs text-slate-400">
                 چک معوق یا در جریانی ثبت نشده است.
               </div>
             ) : (
               <div className="space-y-2">
-                {pendingCheques.slice(0, 3).map((ch, idx) => (
+                {pendingChequesList.slice(0, 3).map((ch) => (
                   <div
-                    key={idx}
-                    className="p-2 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs"
+                    key={ch.id}
+                    onClick={() => onNavigate('finance')}
+                    className="p-2 bg-slate-50 hover:bg-slate-100/80 cursor-pointer transition rounded-xl border border-slate-200 flex items-center justify-between text-xs"
                   >
                     <div>
-                      <div className="font-medium text-slate-800 text-[11px]">
-                        چک {ch.type} - {ch.bank}
+                      <div className="font-medium text-slate-800 text-[11px] flex items-center gap-1">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            ch.type === 'receive' ? 'bg-teal-500' : 'bg-amber-500'
+                          }`}
+                        />
+                        <span>{ch.type === 'receive' ? 'چک دریافتی' : 'چک پرداختی'} - {ch.bankName}</span>
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5">
-                        سررسید: {ch.dueDate} | ش: {ch.chequeNumber}
+                        سررسید: {ch.dueDate} | طرف‌حساب: {ch.contactName}
                       </div>
                     </div>
                     <div className="text-left font-mono font-bold text-slate-800 text-xs">
