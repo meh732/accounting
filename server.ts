@@ -226,6 +226,26 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+  // Active SSE Clients for instant real-time broadcast across all computers
+  const sseClients = new Set<express.Response>();
+
+  function broadcastDatabaseUpdate(updatedDb: typeof currentDatabase) {
+    const payload = JSON.stringify({
+      type: 'sync',
+      version: updatedDb.version,
+      lastUpdated: updatedDb.lastUpdated,
+      data: updatedDb
+    });
+
+    for (const client of sseClients) {
+      try {
+        client.write(`event: sync\ndata: ${payload}\n\n`);
+      } catch (err) {
+        sseClients.delete(client);
+      }
+    }
+  }
+
   // API Endpoints
   // 1. Health check & Server Status
   app.get('/api/health', (req, res) => {
@@ -233,12 +253,45 @@ async function startServer() {
       status: 'ok',
       version: currentDatabase.version,
       lastUpdated: currentDatabase.lastUpdated,
+      connectedClients: sseClients.size,
       financialYear: currentDatabase.settings.financialYear || null,
       serverTime: new Date().toISOString()
     });
   });
 
-  // 2. Get current version for polling
+  // 2. Real-time Server-Sent Events (SSE) stream for instant synchronization
+  app.get('/api/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    // Send initial connection packet
+    res.write(`event: connected\ndata: ${JSON.stringify({
+      version: currentDatabase.version,
+      lastUpdated: currentDatabase.lastUpdated
+    })}\n\n`);
+
+    sseClients.add(res);
+
+    // Keep connection alive with periodic heartbeat
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(`: heartbeat\n\n`);
+      } catch {
+        clearInterval(heartbeat);
+        sseClients.delete(res);
+      }
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      sseClients.delete(res);
+    });
+  });
+
+  // 3. Get current version for polling fallback
   app.get('/api/version', (req, res) => {
     res.json({
       version: currentDatabase.version || 1,
@@ -246,12 +299,12 @@ async function startServer() {
     });
   });
 
-  // 3. Get entire unified server database
+  // 4. Get entire unified server database
   app.get('/api/data', (req, res) => {
     res.json(currentDatabase);
   });
 
-  // 4. Update entire or partial database
+  // 5. Update entire or partial database
   app.post('/api/data', (req, res) => {
     try {
       const incoming = req.body;
@@ -272,11 +325,14 @@ async function startServer() {
 
       saveDatabaseToDisk(currentDatabase);
 
+      // Instant push to all connected computers & browser tabs!
+      broadcastDatabaseUpdate(currentDatabase);
+
       res.json({
         success: true,
         version: newVersion,
         lastUpdated: now,
-        message: 'Database saved to server successfully.'
+        message: 'Database saved and broadcasted successfully.'
       });
     } catch (err) {
       console.error('[Server DB] Error updating database:', err);
@@ -284,7 +340,7 @@ async function startServer() {
     }
   });
 
-  // 5. Reset database on server
+  // 6. Reset database on server
   app.post('/api/reset', (req, res) => {
     try {
       const blank = createBlankDatabase();
@@ -293,6 +349,8 @@ async function startServer() {
 
       currentDatabase = blank;
       saveDatabaseToDisk(currentDatabase);
+
+      broadcastDatabaseUpdate(currentDatabase);
 
       res.json({
         success: true,

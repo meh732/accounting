@@ -288,11 +288,12 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   // Server Synchronization State
-  const [serverSyncStatus, setServerSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
-  const [lastServerSyncTime, setLastServerSyncTime] = useState<string | null>(null);
+  const [serverSyncStatus, setServerSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('synced');
+  const [lastServerSyncTime, setLastServerSyncTime] = useState<string | null>(() => new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }));
   const serverVersionRef = useRef<number>(1);
   const isInitialLoadedRef = useRef<boolean>(false);
   const isSavingToServerRef = useRef<boolean>(false);
+  const isApplyingRemoteUpdateRef = useRef<boolean>(false);
 
   // Sync to local storage as offline cache
   useEffect(() => {
@@ -367,61 +368,106 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (e) { console.error('Error saving financialTransactions', e); }
   }, [financialTransactions]);
 
-  // Load from Central Server on initial mount
+  // Apply server-provided state without triggering save loop
+  const applyServerDatabase = (serverDb: any) => {
+    if (!serverDb || typeof serverDb !== 'object') return;
+    isApplyingRemoteUpdateRef.current = true;
+
+    if (serverDb.settings) setSettings(serverDb.settings);
+    if (serverDb.accounts && Array.isArray(serverDb.accounts) && serverDb.accounts.length > 0) {
+      setChartOfAccounts(serverDb.accounts);
+    }
+    if (Array.isArray(serverDb.contacts)) setContacts(serverDb.contacts);
+    if (Array.isArray(serverDb.bankAccounts)) setBankAccounts(serverDb.bankAccounts);
+    if (Array.isArray(serverDb.categories)) setProductCategories(serverDb.categories);
+    if (Array.isArray(serverDb.products)) setProducts(serverDb.products);
+    if (Array.isArray(serverDb.invoices)) setInvoices(serverDb.invoices);
+    if (Array.isArray(serverDb.vouchers)) setVouchers(serverDb.vouchers);
+    if (Array.isArray(serverDb.expenses)) setExpenses(serverDb.expenses);
+    if (Array.isArray(serverDb.financialYears)) setFinancialYears(serverDb.financialYears);
+    if (Array.isArray(serverDb.cheques)) setCheques(serverDb.cheques);
+    if (Array.isArray(serverDb.financialTransactions)) setFinancialTransactions(serverDb.financialTransactions);
+    if (Array.isArray(serverDb.backups)) setAutoBackupSnapshots(serverDb.backups);
+
+    if (serverDb.version) {
+      serverVersionRef.current = serverDb.version;
+    }
+    setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setServerSyncStatus('synced');
+
+    setTimeout(() => {
+      isApplyingRemoteUpdateRef.current = false;
+    }, 150);
+  };
+
+  // Load from Central Server on initial mount or manual click
   const syncWithServer = async () => {
     try {
       setServerSyncStatus('syncing');
       const res = await fetch('/api/data');
       if (res.ok) {
         const serverDb = await res.json();
-        if (serverDb && serverDb.settings) {
-          setSettings(serverDb.settings);
-          if (serverDb.accounts && serverDb.accounts.length > 0) {
-            setChartOfAccounts(serverDb.accounts);
-          }
-          setContacts(serverDb.contacts || []);
-          setBankAccounts(serverDb.bankAccounts || []);
-          setProductCategories(serverDb.categories || []);
-          setProducts(serverDb.products || []);
-          setInvoices(serverDb.invoices || []);
-          setVouchers(serverDb.vouchers || []);
-          setExpenses(serverDb.expenses || []);
-          setFinancialYears(serverDb.financialYears || []);
-          setCheques(serverDb.cheques || []);
-          setFinancialTransactions(serverDb.financialTransactions || []);
-          if (serverDb.backups) {
-            setAutoBackupSnapshots(serverDb.backups);
-          }
-
-          serverVersionRef.current = serverDb.version || 1;
-          setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
-          setServerSyncStatus('synced');
-        }
+        applyServerDatabase(serverDb);
       } else {
         setServerSyncStatus('offline');
       }
     } catch (err) {
-      console.warn('Central server sync offline/unavailable:', err);
+      console.warn('Central server sync offline:', err);
       setServerSyncStatus('offline');
     } finally {
       isInitialLoadedRef.current = true;
     }
   };
 
+  // 1. Initial Load & Real-time Live SSE connection across all computers
   useEffect(() => {
     syncWithServer();
+
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+
+      eventSource.addEventListener('sync', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload && payload.data && payload.version) {
+            // Apply live update from other clients/computers immediately
+            if (payload.version > serverVersionRef.current) {
+              applyServerDatabase(payload.data);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing SSE sync data:', err);
+        }
+      });
+
+      eventSource.onopen = () => {
+        setServerSyncStatus('synced');
+      };
+
+      eventSource.onerror = () => {
+        // SSE handles reconnection automatically
+      };
+    } catch (err) {
+      console.warn('EventSource initialization:', err);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, []);
 
-  // Save to Central Server whenever local changes happen
+  // 2. Save to Central Server whenever local changes happen
   useEffect(() => {
-    if (!isInitialLoadedRef.current) return;
+    if (!isInitialLoadedRef.current || isApplyingRemoteUpdateRef.current) return;
 
     const timer = setTimeout(async () => {
-      if (isSavingToServerRef.current) return;
+      if (isSavingToServerRef.current || isApplyingRemoteUpdateRef.current) return;
       isSavingToServerRef.current = true;
 
       try {
-        setServerSyncStatus('syncing');
         const payload = {
           settings,
           accounts: chartOfAccounts,
@@ -447,7 +493,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (res.ok) {
           const resData = await res.json();
           serverVersionRef.current = resData.version;
-          setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
+          setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
           setServerSyncStatus('synced');
         } else {
           setServerSyncStatus('error');
@@ -457,7 +503,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } finally {
         isSavingToServerRef.current = false;
       }
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [
@@ -476,16 +522,15 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     autoBackupSnapshots
   ]);
 
-  // Periodic polling & tab focus synchronization across all devices and computers
+  // 3. Fallback polling for backup & window focus check
   useEffect(() => {
     const checkServerVersion = async () => {
-      if (!isInitialLoadedRef.current || isSavingToServerRef.current) return;
+      if (!isInitialLoadedRef.current || isSavingToServerRef.current || isApplyingRemoteUpdateRef.current) return;
       try {
         const res = await fetch('/api/version');
         if (res.ok) {
           const { version } = await res.json();
           if (version && version > serverVersionRef.current) {
-            // Newer version detected on server (e.g. from another computer/user)
             await syncWithServer();
           }
         }
@@ -494,7 +539,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     };
 
-    const interval = setInterval(checkServerVersion, 4000);
+    const interval = setInterval(checkServerVersion, 5000);
     window.addEventListener('focus', checkServerVersion);
 
     return () => {

@@ -16,7 +16,8 @@ import {
   Menu,
   Cloud,
   RefreshCw,
-  Server
+  Server,
+  CheckCircle2
 } from 'lucide-react';
 import { getCurrentShamsiDate } from '../../utils/dateUtils';
 
@@ -151,38 +152,43 @@ export const Header: React.FC<HeaderProps> = ({
             <span>واحد: {settings.currency}</span>
           </button>
 
-          {/* Central Server Sync Status */}
+          {/* Central Server Real-time Sync Status */}
           <button
             id="btn-server-sync-status"
-            onClick={() => syncWithServer()}
+            onClick={async () => {
+              await syncWithServer();
+            }}
             title={
               serverSyncStatus === 'synced'
-                ? `دیتابیس متمرکز سرور - آخرین همگام‌سازی: ${lastServerSyncTime || 'لحظاتی پیش'}`
+                ? `پایگاه‌داده متمرکز سرور - متصل و همگام آنلاین (آخرین بروزرسانی: ${lastServerSyncTime || 'لحظاتی پیش'}) - برای بروزرسانی دستی کلیک کنید`
                 : serverSyncStatus === 'syncing'
-                ? 'در حال ذخیره و همگام‌سازی با سرور...'
-                : 'آفلاین / کلیک برای تلاش مجدد اتصال به سرور'
+                ? 'در حال همگام‌سازی و ارتباط با پایگاه‌داده سرور...'
+                : 'سرور در دسترس نیست / کلیک برای تلاش مجدد'
             }
-            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs font-bold rounded-lg transition border ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg transition border cursor-pointer ${
               serverSyncStatus === 'synced'
-                ? 'bg-blue-50/80 text-blue-900 border-blue-200 hover:bg-blue-100'
+                ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300'
                 : serverSyncStatus === 'syncing'
-                ? 'bg-amber-50 text-amber-900 border-amber-200 animate-pulse'
-                : 'bg-rose-50 text-rose-900 border-rose-200'
+                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                : 'bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100'
             }`}
           >
             {serverSyncStatus === 'syncing' ? (
               <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
             ) : serverSyncStatus === 'synced' ? (
-              <Cloud className="w-3.5 h-3.5 text-blue-600" />
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
             ) : (
               <Server className="w-3.5 h-3.5 text-rose-600" />
             )}
-            <span className="hidden xl:inline text-[11px]">
+            <span className="hidden sm:inline text-[11px]">
               {serverSyncStatus === 'synced'
-                ? 'سرور متمرکز (همگام)'
+                ? `همگام با سرور (${lastServerSyncTime || 'لحظه‌ای'})`
                 : serverSyncStatus === 'syncing'
-                ? 'در حال همگام‌سازی...'
-                : 'سرور آفلاین'}
+                ? 'در حال اتصال...'
+                : 'آفلاین (تلاش مجدد)'}
             </span>
           </button>
 
