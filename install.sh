@@ -152,18 +152,23 @@ create_systemd_service() {
     local port=${1:-$DEFAULT_PORT}
     echo -e "${BLUE}[*] Creating system background service (${SERVICE_NAME})...${NC}"
 
+    local entry_file="${INSTALL_DIR}/dist/server.cjs"
+    if [[ ! -f "${entry_file}" ]]; then
+        entry_file="${INSTALL_DIR}/server.js"
+    fi
+
     cat <<EOF > "${SERVICE_FILE}"
 [Unit]
-Description=Persian Accounting Web Service
+Description=Persian Accounting Central Web & Database Service
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=$(which node) ${INSTALL_DIR}/server.js
+ExecStart=$(which node) ${entry_file}
 Restart=always
-RestartSec=5
+RestartSec=3
 Environment=NODE_ENV=production
 Environment=PORT=${port}
 Environment=HOST=0.0.0.0
@@ -175,7 +180,7 @@ EOF
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1
     systemctl restart "${SERVICE_NAME}"
-    echo -e "${GREEN}[✓] System service enabled and started.${NC}"
+    echo -e "${GREEN}[✓] System service enabled and started on port ${port}.${NC}"
 }
 
 setup_domain_ssl() {
@@ -377,9 +382,8 @@ update_app() {
     cp -f "${INSTALL_DIR}/install.sh" "${BIN_PATH}"
     chmod +x "${BIN_PATH}" 2>/dev/null
 
-    echo -e "${BLUE}[*] Restarting background service...${NC}"
-    systemctl daemon-reload
-    systemctl restart "${SERVICE_NAME}"
+    echo -e "${BLUE}[*] Refreshing and restarting background service...${NC}"
+    create_systemd_service "${current_port}"
 
     local server_ip
     server_ip=$(get_server_ip)
