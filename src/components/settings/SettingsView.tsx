@@ -20,7 +20,14 @@ import {
   ToggleLeft,
   ToggleRight,
   Check,
-  Layers
+  Layers,
+  Send,
+  Bot,
+  MessageSquare,
+  Clock,
+  Radio,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { BackupManagerModal } from '../backup/BackupManagerModal';
 import { YearEndClosingModal } from '../yearEnd/YearEndClosingModal';
@@ -36,6 +43,7 @@ export const SettingsView: React.FC = () => {
     financialYears,
     createNewFinancialYear,
     switchFinancialYear,
+    triggerBotBackupNow,
   } = useAccounting();
 
   const [companyName, setCompanyName] = useState(settings.companyName || 'حسابداری مه');
@@ -48,6 +56,18 @@ export const SettingsView: React.FC = () => {
   const [economicCode, setEconomicCode] = useState(settings.economicCode || '');
   const [phone, setPhone] = useState(settings.phone || '');
   const [address, setAddress] = useState(settings.address || '');
+
+  // Bot Backup State
+  const [botEnabled, setBotEnabled] = useState(settings.botBackup?.enabled || false);
+  const [botIntervalHours, setBotIntervalHours] = useState(settings.botBackup?.intervalHours || 6);
+  const [telegramEnabled, setTelegramEnabled] = useState(settings.botBackup?.telegramEnabled || false);
+  const [telegramBotToken, setTelegramBotToken] = useState(settings.botBackup?.telegramBotToken || '');
+  const [telegramAdminChatIds, setTelegramAdminChatIds] = useState(settings.botBackup?.telegramAdminChatIds || '');
+  const [baleEnabled, setBaleEnabled] = useState(settings.botBackup?.baleEnabled || false);
+  const [baleBotToken, setBaleBotToken] = useState(settings.botBackup?.baleBotToken || '');
+  const [baleAdminChatIds, setBaleAdminChatIds] = useState(settings.botBackup?.baleAdminChatIds || '');
+  const [isSendingBotTest, setIsSendingBotTest] = useState(false);
+  const [botTestResults, setBotTestResults] = useState<Array<{ platform: string; targetChatId: string; success: boolean; message?: string }> | null>(null);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -69,9 +89,47 @@ export const SettingsView: React.FC = () => {
       economicCode,
       phone,
       address,
+      botBackup: {
+        enabled: botEnabled,
+        intervalHours: Number(botIntervalHours) || 6,
+        telegramEnabled,
+        telegramBotToken,
+        telegramAdminChatIds,
+        baleEnabled,
+        baleBotToken,
+        baleAdminChatIds,
+        lastSentTimestamp: settings.botBackup?.lastSentTimestamp,
+      },
     });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  const handleSendBotTestNow = async () => {
+    setIsSendingBotTest(true);
+    setBotTestResults(null);
+    try {
+      // Save latest settings first
+      updateSettings({
+        botBackup: {
+          enabled: botEnabled,
+          intervalHours: Number(botIntervalHours) || 6,
+          telegramEnabled,
+          telegramBotToken,
+          telegramAdminChatIds,
+          baleEnabled,
+          baleBotToken,
+          baleAdminChatIds,
+        },
+      });
+
+      const res = await triggerBotBackupNow();
+      setBotTestResults(res);
+    } catch (err: any) {
+      alert(`خطا در ارسال: ${err?.message || err}`);
+    } finally {
+      setIsSendingBotTest(false);
+    }
   };
 
   const handleAddNewYear = () => {
@@ -300,6 +358,248 @@ export const SettingsView: React.FC = () => {
                 </div>
               </div>
             </label>
+          </div>
+
+          {/* Telegram & Bale Bot Auto-Backup Configuration */}
+          <div className="p-4 bg-gradient-to-br from-indigo-50/50 via-white to-sky-50/40 rounded-xl border border-indigo-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-xs">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                    <span>ارسال خودکار فایل پشتیبان به ربات‌های تلگرام و بله (ویژه مدیران)</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-bold">
+                      بازه ساعتی
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    ارسال منظم فایل JSON کامل دیتابیس به ادمین‌های مشخص‌شده در تلگرام یا پیام‌رسان بله
+                  </div>
+                </div>
+              </div>
+
+              {/* Master Toggle */}
+              <button
+                type="button"
+                onClick={() => setBotEnabled(!botEnabled)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition ${
+                  botEnabled
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                }`}
+              >
+                {botEnabled ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>فعال</span>
+                  </>
+                ) : (
+                  <span>غیرفعال</span>
+                )}
+              </button>
+            </div>
+
+            {botEnabled && (
+              <div className="space-y-4 pt-1">
+                {/* Interval Selector */}
+                <div className="p-3 bg-white rounded-lg border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-indigo-600" />
+                    <div>
+                      <div className="font-bold text-slate-800 text-xs">بازه زمانی ارسال خودکار (ساعتی)</div>
+                      <div className="text-[11px] text-slate-500">هر چند ساعت یکبار نسخه پشتیبان ارسال شود؟</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={botIntervalHours}
+                      onChange={(e) => setBotIntervalHours(Number(e.target.value))}
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-indigo-900 text-xs focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value={1}>هر ۱ ساعت یکبار</option>
+                      <option value={2}>هر ۲ ساعت یکبار</option>
+                      <option value={4}>هر ۴ ساعت یکبار</option>
+                      <option value={6}>هر ۶ ساعت یکبار (پیش‌نهادی)</option>
+                      <option value={12}>هر ۱۲ ساعت یکبار</option>
+                      <option value={24}>هر ۲۴ ساعت یکبار (روزانه)</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={handleSendBotTestNow}
+                      disabled={isSendingBotTest}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-xs shadow-xs transition"
+                    >
+                      {isSendingBotTest ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>در حال ارسال...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>ارسال تستی اکنون</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Test Results Banner */}
+                {botTestResults && (
+                  <div className="p-3 bg-slate-900 text-white rounded-lg text-xs space-y-1.5">
+                    <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex items-center justify-between">
+                      <span>گزارش آخرین ارسال:</span>
+                      <button
+                        type="button"
+                        onClick={() => setBotTestResults(null)}
+                        className="text-slate-400 hover:text-white text-[10px]"
+                      >
+                        بستن
+                      </button>
+                    </div>
+                    {botTestResults.length === 0 ? (
+                      <div className="text-amber-300 text-[11px]">هیچ کانال تلگرام یا بله‌ای فعال/تنظیم نشده است.</div>
+                    ) : (
+                      botTestResults.map((r, i) => (
+                        <div key={i} className="flex items-center justify-between text-[11px]">
+                          <span className="flex items-center gap-1.5">
+                            <span className={r.success ? 'text-emerald-400' : 'text-rose-400'}>
+                              {r.success ? '✓' : '✗'}
+                            </span>
+                            <span>
+                              {r.platform === 'telegram' ? 'ربات تلگرام' : 'ربات بله'} (چت: {r.targetChatId})
+                            </span>
+                          </span>
+                          <span className={r.success ? 'text-emerald-300' : 'text-rose-300'}>
+                            {r.message}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Telegram Bot Config */}
+                  <div className="p-3.5 bg-white rounded-xl border border-sky-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[11px]">
+                          TG
+                        </div>
+                        <span className="font-bold text-slate-800 text-xs">تنظیمات ربات تلگرام</span>
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={telegramEnabled}
+                          onChange={(e) => setTelegramEnabled(e.target.checked)}
+                          className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        <span className="text-[11px] font-bold text-slate-700">فعال‌سازی</span>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          توکن ربات تلگرام (Bot Token)
+                        </label>
+                        <input
+                          type="password"
+                          value={telegramBotToken}
+                          onChange={(e) => setTelegramBotToken(e.target.value)}
+                          placeholder="مثال: 123456789:AAHk..."
+                          disabled={!telegramEnabled}
+                          className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-300 rounded-md p-2 font-mono text-left text-xs"
+                        />
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          از طریق @BotFather در تلگرام ساخته می‌شود.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          شناسه عددی چت ادمین‌ها (Chat ID)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={telegramAdminChatIds}
+                          onChange={(e) => setTelegramAdminChatIds(e.target.value)}
+                          placeholder="مثال: 123456789, 987654321 (چند شناسه با کاما یا خط جدید)"
+                          disabled={!telegramEnabled}
+                          className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-300 rounded-md p-2 font-mono text-left text-xs"
+                        />
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          شناسه چت خود یا ادمین‌ها (از @userinfobot دریافت کنید).
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bale Bot Config */}
+                  <div className="p-3.5 bg-white rounded-xl border border-emerald-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px]">
+                          بله
+                        </div>
+                        <span className="font-bold text-slate-800 text-xs">تنظیمات ربات بله (Bale Messenger)</span>
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={baleEnabled}
+                          onChange={(e) => setBaleEnabled(e.target.checked)}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] font-bold text-slate-700">فعال‌سازی</span>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          توکن ربات بله (Bale Bot Token)
+                        </label>
+                        <input
+                          type="password"
+                          value={baleBotToken}
+                          onChange={(e) => setBaleBotToken(e.target.value)}
+                          placeholder="مثال: 123456789:abcdef..."
+                          disabled={!baleEnabled}
+                          className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-300 rounded-md p-2 font-mono text-left text-xs"
+                        />
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          از طریق بازوی @BotFather در پیام‌رسان بله دریافت می‌شود.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          شناسه کاربری/چت ادمین‌های بله (Chat ID)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={baleAdminChatIds}
+                          onChange={(e) => setBaleAdminChatIds(e.target.value)}
+                          placeholder="مثال: 123456789, 987654321 (چند شناسه با کاما یا خط جدید)"
+                          disabled={!baleEnabled}
+                          className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-300 rounded-md p-2 font-mono text-left text-xs"
+                        />
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          شناسه عددی حساب کاربری ادمین‌ها در پیام‌رسان بله.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-2">

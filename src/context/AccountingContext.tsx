@@ -31,6 +31,7 @@ import {
 } from '../utils/defaultData';
 import { getCurrentShamsiDate } from '../utils/dateUtils';
 import { calculateTrialBalance } from '../utils/financialCalculations';
+import { dispatchBackupToAllAdmins, BotSendResult } from '../utils/botBackupService';
 
 interface AccountingContextType {
   settings: CompanySettings;
@@ -120,23 +121,24 @@ interface AccountingContextType {
   clearAllSnapshots: () => void;
   exportSnapshotJSON: (snapshot: BackupSnapshot) => void;
   lastBackupTime: string | null;
+  triggerBotBackupNow: () => Promise<BotSendResult[]>;
 }
 
 const STORAGE_KEYS = {
-  SETTINGS: 'acc_settings_v1',
-  ACCOUNTS: 'acc_accounts_v1',
-  CONTACTS: 'acc_contacts_v1',
-  BANKS: 'acc_banks_v1',
-  CATEGORIES: 'acc_categories_v1',
-  PRODUCTS: 'acc_products_v1',
-  VOUCHERS: 'acc_vouchers_v1',
-  INVOICES: 'acc_invoices_v1',
-  EXPENSES: 'acc_expenses_v1',
-  YEARS: 'acc_financial_years_v1',
-  BACKUPS: 'acc_backup_snapshots_v1',
-  LAST_BACKUP: 'acc_last_backup_time_v1',
-  CHEQUES: 'acc_cheques_v1',
-  FIN_TX: 'acc_fin_tx_v1',
+  SETTINGS: 'acc_settings_v2',
+  ACCOUNTS: 'acc_accounts_v2',
+  CONTACTS: 'acc_contacts_v2',
+  BANKS: 'acc_banks_v2',
+  CATEGORIES: 'acc_categories_v2',
+  PRODUCTS: 'acc_products_v2',
+  VOUCHERS: 'acc_vouchers_v2',
+  INVOICES: 'acc_invoices_v2',
+  EXPENSES: 'acc_expenses_v2',
+  YEARS: 'acc_financial_years_v2',
+  BACKUPS: 'acc_backup_snapshots_v2',
+  LAST_BACKUP: 'acc_last_backup_time_v2',
+  CHEQUES: 'acc_cheques_v2',
+  FIN_TX: 'acc_fin_tx_v2',
 };
 
 const AccountingContext = createContext<AccountingContextType | undefined>(undefined);
@@ -1501,6 +1503,84 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return snapshot;
   };
 
+  // Dispatch backup to bots (Telegram / Bale)
+  const triggerBotBackupNow = async (): Promise<BotSendResult[]> => {
+    const config = settings.botBackup;
+    if (!config) return [];
+
+    const data = {
+      settings,
+      chartOfAccounts,
+      contacts,
+      bankAccounts,
+      productCategories,
+      products,
+      invoices,
+      vouchers,
+      expenses,
+      financialYears,
+      cheques,
+      financialTransactions,
+      exportDate: new Date().toISOString(),
+      shamsiDate: getCurrentShamsiDate(),
+      version: '1.0.0',
+    };
+
+    const payload = JSON.stringify(data, null, 2);
+    const results = await dispatchBackupToAllAdmins(
+      {
+        enabled: config.enabled,
+        intervalHours: config.intervalHours || 6,
+        telegramEnabled: config.telegramEnabled,
+        telegramBotToken: config.telegramBotToken,
+        telegramAdminChatIds: config.telegramAdminChatIds,
+        baleEnabled: config.baleEnabled,
+        baleBotToken: config.baleBotToken,
+        baleAdminChatIds: config.baleAdminChatIds,
+      },
+      payload,
+      settings.companyName || 'حسابداری مه'
+    );
+
+    // Update lastSentTimestamp in settings
+    setSettings((prev) => ({
+      ...prev,
+      botBackup: {
+        ...(prev.botBackup || config),
+        lastSentTimestamp: Date.now(),
+      },
+    }));
+
+    return results;
+  };
+
+  // Hourly check for auto bot backup dispatch
+  useEffect(() => {
+    if (!settings.botBackup?.enabled) return;
+
+    const checkAndSend = async () => {
+      const botCfg = settings.botBackup;
+      if (!botCfg || !botCfg.enabled) return;
+
+      const intervalMs = (botCfg.intervalHours || 6) * 60 * 60 * 1000;
+      const lastSent = botCfg.lastSentTimestamp || 0;
+      const now = Date.now();
+
+      if (now - lastSent >= intervalMs) {
+        await triggerBotBackupNow();
+      }
+    };
+
+    // Check on startup after 10s, then every 5 minutes
+    const initialTimer = setTimeout(checkAndSend, 10000);
+    const intervalTimer = setInterval(checkAndSend, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(intervalTimer);
+    };
+  }, [settings.botBackup]);
+
   // Automatic Backup on Close / Unload / Page Hide
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -2082,6 +2162,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         clearAllSnapshots,
         exportSnapshotJSON,
         lastBackupTime,
+        triggerBotBackupNow,
       }}
     >
       {children}

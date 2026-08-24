@@ -230,6 +230,17 @@ export interface CompanySettings {
   invoiceFooterNote: string;
   autoGenerateVouchers: boolean;
   autoBackupOnClose?: boolean;
+  botBackup?: {
+    enabled: boolean;
+    intervalHours: number; // بازه ساعتی ارسال بکاپ: 1, 2, 4, 6, 12, 24
+    lastSentTimestamp?: number;
+    telegramEnabled: boolean;
+    telegramBotToken: string;
+    telegramAdminChatIds: string;
+    baleEnabled: boolean;
+    baleBotToken: string;
+    baleAdminChatIds: string;
+  };
 }
 
 export interface FinancialYearInfo {
