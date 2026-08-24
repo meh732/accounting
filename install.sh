@@ -17,36 +17,44 @@ NC='\033[0m'
 
 clear
 echo -e "${CYAN}====================================================================${NC}"
-echo -e "${WHITE}      Persian Accounting System - Automatic Linux Installer         ${NC}"
+echo -e "${WHITE}      سامانه حسابداری مَه - نصاب خودکار لینوکس (Persian Accounting)  ${NC}"
 echo -e "         ${YELLOW}Repository: https://github.com/meh732/accounting.git${NC}"
 echo -e "${CYAN}====================================================================${NC}\n"
 
 # Check root
 if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}[ERROR] Please run this script as root or with sudo!${NC}"
+    echo -e "${RED}[خطا / ERROR] لطفا این اسکریپت را با دسترسی root یا sudo اجرا کنید!${NC}"
     exit 1
 fi
 
 INSTALL_DIR="/var/www/accounting"
 BIN_PATH="/usr/local/bin/accounting"
 
-# Install curl, git, tar if missing
+echo -e "${BLUE}[*] در حال آماده‌سازی و بررسی پیش‌نیازهای اولیه سیستم...${NC}"
 if command -v apt-get &>/dev/null; then
-    apt-get update -y >/dev/null 2>&1
-    apt-get install -y curl wget git tar >/dev/null 2>&1
+    apt-get update -qq
+    apt-get install -y -qq curl wget git tar socat cron >/dev/null 2>&1
 elif command -v yum &>/dev/null; then
-    yum install -y curl wget git tar >/dev/null 2>&1
+    yum install -y -q curl wget git tar socat crontabs >/dev/null 2>&1
 elif command -v dnf &>/dev/null; then
-    dnf install -y curl wget git tar >/dev/null 2>&1
+    dnf install -y -q curl wget git tar socat crontabs >/dev/null 2>&1
 fi
+echo -e "${GREEN}[✓] پیش‌نیازهای پایه با موفقیت بررسی شدند.${NC}\n"
 
-# Download installer script
+# Download latest installer script
 mkdir -p /tmp/accounting_installer
+echo -e "${BLUE}[*] در حال دریافت آخرین نسخه اسکریپت مدیریت از گیت‌هاب...${NC}"
 curl -sSL https://raw.githubusercontent.com/meh732/accounting/main/accounting.sh -o /tmp/accounting_installer/accounting.sh
 chmod +x /tmp/accounting_installer/accounting.sh
 
-# Run install routine directly
-bash /tmp/accounting_installer/accounting.sh install
+# Run install routine interactively with terminal TTY access
+if [ -t 0 ]; then
+    bash /tmp/accounting_installer/accounting.sh install
+elif [ -e /dev/tty ]; then
+    bash /tmp/accounting_installer/accounting.sh install < /dev/tty
+else
+    bash /tmp/accounting_installer/accounting.sh install
+fi
 
 # Clean temporary files
 rm -rf /tmp/accounting_installer
