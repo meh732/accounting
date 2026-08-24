@@ -93,9 +93,15 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="font-bold text-slate-800 text-xs sm:text-sm leading-tight line-clamp-1">
                 {settings.companyName}
               </h1>
-              <span className="bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-indigo-100 hidden sm:inline-block">
-                ERP استاندارد
-              </span>
+              {settings.financialYear ? (
+                <span className="bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-indigo-100 hidden sm:inline-block font-mono">
+                  سال مالی {settings.financialYear}
+                </span>
+              ) : (
+                <span className="bg-rose-50 text-rose-700 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-rose-100 hidden sm:inline-block">
+                  سال مالی تعریف نشده
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-500 mt-0.5">
               <Calendar className="w-3 h-3 text-indigo-500" />

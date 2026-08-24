@@ -217,17 +217,30 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">سال مالی فعال فعلی</label>
-              <select
-                value={financialYear}
-                onChange={(e) => setFinancialYear(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-mono font-bold text-indigo-900"
-              >
-                {financialYears.map((fy) => (
-                  <option key={fy.year} value={fy.year}>
-                    {fy.title} {fy.isClosed ? '(بسته شده)' : '(فعال)'}
-                  </option>
-                ))}
-              </select>
+              {financialYears.length === 0 ? (
+                <div className="flex items-center gap-2 py-1">
+                  <span className="text-rose-500 font-bold text-xs">تعریف نشده</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddYear(true)}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold"
+                  >
+                    + تعریف سال مالی
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={financialYear}
+                  onChange={(e) => setFinancialYear(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-mono font-bold text-indigo-900"
+                >
+                  {financialYears.map((fy) => (
+                    <option key={fy.year} value={fy.year}>
+                      {fy.title} {fy.isClosed ? '(بسته شده)' : '(فعال)'}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -656,46 +669,52 @@ export const SettingsView: React.FC = () => {
 
             {/* List of Financial Years */}
             <div className="space-y-1.5 max-h-44 overflow-y-auto">
-              {financialYears.map((fy) => {
-                const isActive = fy.year === settings.financialYear;
-                return (
-                  <div
-                    key={fy.year}
-                    className={`flex items-center justify-between p-2 rounded-lg border ${
-                      isActive
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-950 font-bold'
-                        : 'bg-slate-50 border-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs">{fy.year}</span>
-                      <span className="text-[11px] truncate">{fy.title}</span>
-                    </div>
+              {financialYears.length === 0 ? (
+                <div className="p-3 text-center text-slate-400 bg-slate-50 rounded-lg text-xs">
+                  هیچ سال مالی تعریف نشده است. بر روی «سال جدید» کلیک کنید.
+                </div>
+              ) : (
+                financialYears.map((fy) => {
+                  const isActive = fy.year === settings.financialYear;
+                  return (
+                    <div
+                      key={fy.year}
+                      className={`flex items-center justify-between p-2 rounded-lg border ${
+                        isActive
+                          ? 'bg-indigo-50 border-indigo-200 text-indigo-950 font-bold'
+                          : 'bg-slate-50 border-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs">{fy.year}</span>
+                        <span className="text-[11px] truncate">{fy.title}</span>
+                      </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {fy.isClosed ? (
-                        <span className="text-[10px] px-1.5 py-0.2 bg-slate-200 text-slate-600 rounded font-medium">
-                          بسته شده
-                        </span>
-                      ) : (
-                        <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded font-bold">
-                          فعال
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {fy.isClosed ? (
+                          <span className="text-[10px] px-1.5 py-0.2 bg-slate-200 text-slate-600 rounded font-medium">
+                            بسته شده
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded font-bold">
+                            فعال
+                          </span>
+                        )}
 
-                      {!isActive && (
-                        <button
-                          type="button"
-                          onClick={() => switchFinancialYear(fy.year)}
-                          className="text-[10px] text-indigo-600 hover:underline px-1 py-0.5"
-                        >
-                          انتخاب
-                        </button>
-                      )}
+                        {!isActive && (
+                          <button
+                            type="button"
+                            onClick={() => switchFinancialYear(fy.year)}
+                            className="text-[10px] text-indigo-600 hover:underline px-1 py-0.5"
+                          >
+                            انتخاب
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             <button

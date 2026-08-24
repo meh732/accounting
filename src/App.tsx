@@ -19,6 +19,7 @@ import { InvoiceModal } from './components/invoices/InvoiceModal';
 import { VoucherModal } from './components/vouchers/VoucherModal';
 import { ExpenseModal } from './components/expenses/ExpenseModal';
 import { BackupManagerModal } from './components/backup/BackupManagerModal';
+import { InitialFinancialYearModal } from './components/settings/InitialFinancialYearModal';
 
 import {
   LayoutDashboard,
@@ -32,7 +33,7 @@ import {
 } from 'lucide-react';
 
 const AccountingApp: React.FC = () => {
-  const { invoices, vouchers, contacts, products, cheques } = useAccounting();
+  const { invoices, vouchers, contacts, products, cheques, settings, financialYears } = useAccounting();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -180,6 +181,11 @@ const AccountingApp: React.FC = () => {
           onClose={() => setIsBackupModalOpen(false)}
         />
       )}
+
+      {/* Initial Financial Year Setup Modal */}
+      <InitialFinancialYearModal
+        isOpen={!settings.financialYear || financialYears.length === 0}
+      />
     </div>
   );
 };

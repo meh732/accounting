@@ -15,7 +15,7 @@ import {
 
 export const defaultCompanySettings: CompanySettings = {
   companyName: 'حسابداری مه',
-  financialYear: '1403',
+  financialYear: '',
   tagline: 'سامانه یکپارچه و استاندارد مالی و بازرگانی',
   economicCode: '',
   nationalCode: '',
@@ -44,16 +44,7 @@ export const defaultCompanySettings: CompanySettings = {
   },
 };
 
-export const defaultFinancialYears: FinancialYearInfo[] = [
-  {
-    year: '1403',
-    title: 'سال مالی ۱۴۰۳ (جاری)',
-    startDate: '1403/01/01',
-    endDate: '1403/12/29',
-    isClosed: false,
-    notes: 'سال مالی فعال'
-  }
-];
+export const defaultFinancialYears: FinancialYearInfo[] = [];
 
 export const defaultChartOfAccounts: AccountCategory[] = [
   // 1. دارایی‌های جاری

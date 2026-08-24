@@ -95,7 +95,7 @@ interface AccountingContextType {
 
   // Financial Year Management
   financialYears: FinancialYearInfo[];
-  createNewFinancialYear: (year: string, title?: string) => FinancialYearInfo;
+  createNewFinancialYear: (year: string, title?: string, startDate?: string, endDate?: string) => FinancialYearInfo;
   closeFinancialYear: (yearToClose: string, newYear: string) => boolean;
   switchFinancialYear: (year: string) => void;
 
@@ -1673,20 +1673,28 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     downloadAnchor.remove();
   };
 
-  const createNewFinancialYear = (year: string, title?: string): FinancialYearInfo => {
+  const createNewFinancialYear = (year: string, title?: string, startDate?: string, endDate?: string): FinancialYearInfo => {
     const existing = financialYears.find((y) => y.year === year);
-    if (existing) return existing;
+    if (existing) {
+      if (!settings.financialYear) {
+        setSettings((prev) => ({ ...prev, financialYear: year }));
+      }
+      return existing;
+    }
 
     const newYearInfo: FinancialYearInfo = {
       year,
       title: title || `سال مالی ${year}`,
-      startDate: `${year}/01/01`,
-      endDate: `${year}/12/29`,
+      startDate: startDate || `${year}/01/01`,
+      endDate: endDate || `${year}/12/29`,
       isClosed: false,
       notes: `سال مالی ایجاد شده در سامانه`,
     };
 
     setFinancialYears((prev) => [newYearInfo, ...prev]);
+    if (!settings.financialYear) {
+      setSettings((prev) => ({ ...prev, financialYear: year }));
+    }
     return newYearInfo;
   };
 
