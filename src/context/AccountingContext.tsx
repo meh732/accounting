@@ -289,11 +289,20 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Server Synchronization State
   const [serverSyncStatus, setServerSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('synced');
-  const [lastServerSyncTime, setLastServerSyncTime] = useState<string | null>(() => new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }));
+  const [lastServerSyncTime, setLastServerSyncTime] = useState<string | null>(() => 
+    new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  );
+  
+  const clientIdRef = useRef<string>(
+    typeof window !== 'undefined'
+      ? 'client_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now()
+      : 'server_client'
+  );
   const serverVersionRef = useRef<number>(1);
   const isInitialLoadedRef = useRef<boolean>(false);
   const isSavingToServerRef = useRef<boolean>(false);
   const isApplyingRemoteUpdateRef = useRef<boolean>(false);
+  const consecutiveFailuresRef = useRef<number>(0);
 
   // Sync to local storage as offline cache
   useEffect(() => {
@@ -392,12 +401,54 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (serverDb.version) {
       serverVersionRef.current = serverDb.version;
     }
+    consecutiveFailuresRef.current = 0;
     setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     setServerSyncStatus('synced');
 
     setTimeout(() => {
       isApplyingRemoteUpdateRef.current = false;
-    }, 150);
+    }, 400);
+  };
+
+  // Upload current local state directly to server
+  const pushLocalDataToServer = async () => {
+    try {
+      const payload = {
+        settings,
+        accounts: chartOfAccounts,
+        contacts,
+        bankAccounts,
+        categories: productCategories,
+        products,
+        invoices,
+        vouchers,
+        expenses,
+        financialYears,
+        cheques,
+        financialTransactions,
+        backups: autoBackupSnapshots,
+        senderClientId: clientIdRef.current
+      };
+
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': clientIdRef.current
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        serverVersionRef.current = resData.version;
+        consecutiveFailuresRef.current = 0;
+        setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setServerSyncStatus('synced');
+      }
+    } catch (err) {
+      console.warn('Error pushing local data to server:', err);
+    }
   };
 
   // Load from Central Server on initial mount or manual click
@@ -407,13 +458,35 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const res = await fetch('/api/data');
       if (res.ok) {
         const serverDb = await res.json();
-        applyServerDatabase(serverDb);
+        
+        // If server is brand new/empty and we have local data, populate server!
+        const serverHasData = serverDb && (
+          (serverDb.invoices && serverDb.invoices.length > 0) ||
+          (serverDb.contacts && serverDb.contacts.length > 0) ||
+          (serverDb.products && serverDb.products.length > 0) ||
+          (serverDb.vouchers && serverDb.vouchers.length > 0)
+        );
+        const localHasData = invoices.length > 0 || contacts.length > 0 || products.length > 0 || vouchers.length > 0;
+
+        if (!serverHasData && localHasData) {
+          await pushLocalDataToServer();
+        } else if (serverDb) {
+          applyServerDatabase(serverDb);
+        }
+        consecutiveFailuresRef.current = 0;
+        setServerSyncStatus('synced');
       } else {
-        setServerSyncStatus('offline');
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current > 2) {
+          setServerSyncStatus('offline');
+        }
       }
     } catch (err) {
-      console.warn('Central server sync offline:', err);
-      setServerSyncStatus('offline');
+      console.warn('Central server sync connection attempt:', err);
+      consecutiveFailuresRef.current += 1;
+      if (consecutiveFailuresRef.current > 2) {
+        setServerSyncStatus('offline');
+      }
     } finally {
       isInitialLoadedRef.current = true;
     }
@@ -424,37 +497,60 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     syncWithServer();
 
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/events');
+    let reconnectTimeout: any = null;
 
-      eventSource.addEventListener('sync', (e: MessageEvent) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload && payload.data && payload.version) {
-            // Apply live update from other clients/computers immediately
-            if (payload.version > serverVersionRef.current) {
-              applyServerDatabase(payload.data);
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/events');
+
+        eventSource.addEventListener('connected', () => {
+          consecutiveFailuresRef.current = 0;
+          setServerSyncStatus('synced');
+        });
+
+        eventSource.addEventListener('sync', (e: MessageEvent) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload && payload.data && payload.version) {
+              // If this client sent it, skip re-applying state
+              if (payload.senderClientId === clientIdRef.current) {
+                serverVersionRef.current = payload.version;
+                setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                setServerSyncStatus('synced');
+                return;
+              }
+
+              // Apply live update from other clients/computers immediately
+              if (payload.version >= serverVersionRef.current) {
+                applyServerDatabase(payload.data);
+              }
             }
+          } catch (err) {
+            console.error('Error parsing SSE sync data:', err);
           }
-        } catch (err) {
-          console.error('Error parsing SSE sync data:', err);
-        }
-      });
+        });
 
-      eventSource.onopen = () => {
-        setServerSyncStatus('synced');
-      };
+        eventSource.onopen = () => {
+          consecutiveFailuresRef.current = 0;
+          setServerSyncStatus('synced');
+        };
 
-      eventSource.onerror = () => {
-        // SSE handles reconnection automatically
-      };
-    } catch (err) {
-      console.warn('EventSource initialization:', err);
-    }
+        eventSource.onerror = () => {
+          // SSE auto-reconnects, fallback to polling
+        };
+      } catch (err) {
+        console.warn('EventSource setup notice:', err);
+      }
+    };
+
+    connectSSE();
 
     return () => {
       if (eventSource) {
         eventSource.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
       }
     };
   }, []);
@@ -481,29 +577,40 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           financialYears,
           cheques,
           financialTransactions,
-          backups: autoBackupSnapshots
+          backups: autoBackupSnapshots,
+          senderClientId: clientIdRef.current
         };
 
         const res = await fetch('/api/data', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Id': clientIdRef.current
+          },
           body: JSON.stringify(payload)
         });
 
         if (res.ok) {
           const resData = await res.json();
           serverVersionRef.current = resData.version;
+          consecutiveFailuresRef.current = 0;
           setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
           setServerSyncStatus('synced');
         } else {
-          setServerSyncStatus('error');
+          consecutiveFailuresRef.current += 1;
+          if (consecutiveFailuresRef.current > 2) {
+            setServerSyncStatus('error');
+          }
         }
       } catch (err) {
-        setServerSyncStatus('offline');
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current > 2) {
+          setServerSyncStatus('offline');
+        }
       } finally {
         isSavingToServerRef.current = false;
       }
-    }, 400);
+    }, 450);
 
     return () => clearTimeout(timer);
   }, [
@@ -532,6 +639,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const { version } = await res.json();
           if (version && version > serverVersionRef.current) {
             await syncWithServer();
+          } else {
+            consecutiveFailuresRef.current = 0;
+            setServerSyncStatus('synced');
           }
         }
       } catch {
@@ -539,7 +649,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     };
 
-    const interval = setInterval(checkServerVersion, 5000);
+    const interval = setInterval(checkServerVersion, 4000);
     window.addEventListener('focus', checkServerVersion);
 
     return () => {

@@ -223,17 +223,31 @@ async function startServer() {
   initDatabase();
 
   const app = express();
+  
+  // Universal CORS for all clients and proxies
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Client-Id');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Active SSE Clients for instant real-time broadcast across all computers
   const sseClients = new Set<express.Response>();
 
-  function broadcastDatabaseUpdate(updatedDb: typeof currentDatabase) {
+  function broadcastDatabaseUpdate(updatedDb: typeof currentDatabase, senderClientId?: string) {
     const payload = JSON.stringify({
       type: 'sync',
       version: updatedDb.version,
       lastUpdated: updatedDb.lastUpdated,
+      senderClientId: senderClientId || null,
       data: updatedDb
     });
 
@@ -265,6 +279,7 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.flushHeaders?.();
 
     // Send initial connection packet
@@ -283,7 +298,7 @@ async function startServer() {
         clearInterval(heartbeat);
         sseClients.delete(res);
       }
-    }, 15000);
+    }, 10000);
 
     req.on('close', () => {
       clearInterval(heartbeat);
@@ -313,12 +328,16 @@ async function startServer() {
         return;
       }
 
+      const senderClientId = req.headers['x-client-id'] as string || incoming.senderClientId;
       const newVersion = (currentDatabase.version || 1) + 1;
       const now = new Date().toISOString();
 
+      const cleanIncoming = { ...incoming };
+      delete cleanIncoming.senderClientId;
+
       currentDatabase = {
         ...currentDatabase,
-        ...incoming,
+        ...cleanIncoming,
         version: newVersion,
         lastUpdated: now
       };
@@ -326,7 +345,7 @@ async function startServer() {
       saveDatabaseToDisk(currentDatabase);
 
       // Instant push to all connected computers & browser tabs!
-      broadcastDatabaseUpdate(currentDatabase);
+      broadcastDatabaseUpdate(currentDatabase, senderClientId);
 
       res.json({
         success: true,
