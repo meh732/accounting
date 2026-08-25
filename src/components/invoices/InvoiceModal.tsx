@@ -1003,6 +1003,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   <div>
                     <label className="text-[11px] text-slate-700 font-bold block mb-1">نام و جستجوی کالا از انبار:</label>
                     <SearchableProductSelect
+                      id={`input-item-mobile-${idx}-product`}
                       products={products}
                       selectedProductId={row.productId}
                       value={row.productTitle}
@@ -1021,6 +1022,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           updateItemField(idx, 'productTitle', customTitle !== undefined ? customTitle : '');
                         }
                       }}
+                      onEnterNext={() => {
+                        setTimeout(() => {
+                          const qEl = document.getElementById(`input-item-mobile-${idx}-qty`);
+                          if (qEl) {
+                            qEl.focus();
+                            (qEl as HTMLInputElement).select();
+                          }
+                        }, 50);
+                      }}
+                      onKeyDown={(e) => handleKeyDown(e, `input-item-mobile-${idx}-qty`)}
                     />
                   </div>
 
@@ -1029,11 +1040,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       <label className="text-[11px] text-slate-600 font-bold block mb-0.5">تعداد ({row.unit}):</label>
                       <input
                         type="number"
+                        id={`input-item-mobile-${idx}-qty`}
                         min="0.01"
                         step="any"
                         value={row.quantity}
                         onFocus={handleInputFocus}
                         onChange={(e) => updateItemField(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                        onKeyDown={(e) => handleKeyDown(e, `input-item-mobile-${idx}-price`)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-center"
                       />
                     </div>
@@ -1041,9 +1054,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       <label className="text-[11px] text-slate-600 font-bold block mb-0.5">قیمت واحد ({settings.currency}):</label>
                       <input
                         type="number"
+                        id={`input-item-mobile-${idx}-price`}
                         value={row.unitPrice}
                         onFocus={handleInputFocus}
                         onChange={(e) => updateItemField(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        onKeyDown={(e) => handleKeyDown(e, undefined, true, idx)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-left"
                       />
                     </div>

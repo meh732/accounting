@@ -29,6 +29,7 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +56,11 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
         (a.parentCode && a.parentCode.toLowerCase().includes(term))
     );
   }, [eligibleAccounts, searchTerm]);
+
+  // Reset highlight index when filtered accounts change
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [filteredAccounts]);
 
   // Group filtered accounts by their main group (first digit)
   const groupedAccounts = useMemo<Record<string, AccountCategory[]>>(() => {
@@ -97,6 +103,7 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
     if (disabled) return;
     setIsOpen(true);
     setSearchTerm('');
+    setHighlightedIndex(0);
     setTimeout(() => {
       if (searchInputRef.current) {
         searchInputRef.current.focus();
@@ -122,7 +129,14 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
         disabled={disabled}
         onClick={handleOpen}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedAccount && onEnterNext && !isOpen) {
+              onEnterNext();
+            } else {
+              handleOpen();
+            }
+          } else if (e.key === 'ArrowDown' || e.key === ' ') {
             e.preventDefault();
             handleOpen();
           } else if (onKeyDown) {
@@ -173,9 +187,18 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   setIsOpen(false);
-                } else if (e.key === 'Enter' && filteredAccounts.length > 0) {
+                } else if (e.key === 'ArrowDown') {
                   e.preventDefault();
-                  handleSelect(filteredAccounts[0]);
+                  setHighlightedIndex((prev) => (prev < filteredAccounts.length - 1 ? prev + 1 : 0));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredAccounts.length - 1));
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (filteredAccounts.length > 0) {
+                    const chosen = filteredAccounts[highlightedIndex] || filteredAccounts[0];
+                    handleSelect(chosen);
+                  }
                 }
               }}
             />
@@ -206,13 +229,21 @@ export const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = (
                   <div className="space-y-0.5">
                     {accList.map((acc) => {
                       const isSelected = acc.code === selectedCode;
+                      const globalIdx = filteredAccounts.findIndex((fa) => fa.id === acc.id);
+                      const isHighlighted = globalIdx === highlightedIndex;
                       return (
                         <button
                           key={acc.id}
                           type="button"
-                          onClick={() => handleSelect(acc)}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelect(acc);
+                          }}
+                          onMouseEnter={() => {
+                            if (globalIdx >= 0) setHighlightedIndex(globalIdx);
+                          }}
                           className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-right transition ${
-                            isSelected
+                            isHighlighted || isSelected
                               ? 'bg-indigo-50 text-indigo-900 font-bold'
                               : 'text-slate-700 hover:bg-slate-50'
                           }`}

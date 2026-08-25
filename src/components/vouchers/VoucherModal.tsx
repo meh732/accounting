@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { JournalVoucher, VoucherItem, VoucherStatus } from '../../types/accounting';
 import { useAccounting } from '../../context/AccountingContext';
 import { getCurrentShamsiDate, formatCurrency, numberToWordsPersian } from '../../utils/dateUtils';
@@ -61,6 +61,11 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ voucherToEdit, onClo
       }
     }, 40);
   };
+
+  // Auto focus first input on mount
+  useEffect(() => {
+    focusElement(voucherToEdit ? 'voucher-row-0-account' : 'voucher-header-number');
+  }, []);
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     e.target.select();
@@ -276,7 +281,17 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ voucherToEdit, onClo
         <form
           onSubmit={handleSubmit}
           onKeyDown={(e) => {
-            // Prevent accidental form submission when pressing Enter inside inputs/selects
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              handleSubmit(e as any);
+              return;
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onClose();
+              return;
+            }
+            // Prevent accidental standard form submit on Enter
             if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
               e.preventDefault();
             }

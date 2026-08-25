@@ -224,6 +224,11 @@ if (!fs.existsSync(distPath)) {
   distPath = path.join(process.cwd(), 'dist');
 }
 
+const publicPath = path.join(process.cwd(), 'public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+}
+
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
 }

@@ -17,7 +17,7 @@ import {
   Cloud,
   RefreshCw,
   Server,
-  CheckCircle2
+  Smartphone
 } from 'lucide-react';
 import { getCurrentShamsiDate } from '../../utils/dateUtils';
 
@@ -45,6 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -53,6 +55,44 @@ export const Header: React.FC<HeaderProps> = ({
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
+
+  // Listen for PWA install prompt
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setDeferredInstallPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choiceResult = await deferredInstallPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        setIsInstalled(true);
+      }
+      setDeferredInstallPrompt(null);
+    } else {
+      alert('برای نصب این برنامه بر روی گوشی یا دسکتاپ:\n\n• در مرورگر کروم: روی آیکون نصب در نوار آدرس یا منوی سه‌نقطه > «نصب برنامه / Install app» کلیک کنید.\n• در آیفون (سافاری): دکمه اشتراک‌گذاری (Share) را بزنید و گزینه «Add to Home Screen» (افزودن به صفحه اصلی) را انتخاب فرمایید.');
+    }
+  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -191,6 +231,19 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'آفلاین (تلاش مجدد)'}
             </span>
           </button>
+
+          {/* PWA Install Button */}
+          {!isInstalled && (
+            <button
+              id="btn-install-pwa"
+              onClick={handleInstallPWA}
+              title="نصب نسخه وب‌اپلیکیشن روی گوشی یا دسکتاپ (PWA)"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition border border-indigo-200"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden md:inline">نصب اپ (PWA)</span>
+            </button>
+          )}
 
           {/* Backup & Restore Center Button */}
           <button
