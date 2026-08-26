@@ -469,7 +469,7 @@ uninstall_app() {
 # 14. Build & Export Ready Windows Client (.exe / ZIP & Direct Web Download)
 build_windows_client_package() {
     print_banner
-    echo -e "${WHITE}=== 14. Build & Export Ready Windows Client Package ===${NC}\n"
+    echo -e "${WHITE}=== 14. Build & Export Ready Windows Client (.EXE & ZIP) ===${NC}\n"
 
     if [[ ! -d "${INSTALL_DIR}" ]]; then
         echo -e "${RED}[ERROR] Accounting system is not installed yet. Choose option 1 first.${NC}"
@@ -490,41 +490,53 @@ build_windows_client_package() {
         base_url="http://${server_ip}:${current_port}"
     fi
 
-    echo -e "${BLUE}[*] Packaging ready-to-run Windows Client bundle directly on server...${NC}"
-    echo -e "  Configured Server Address: ${CYAN}${base_url}${NC}"
+    echo -e "${BLUE}[*] Compiling & Packaging standalone Windows .EXE client...${NC}"
+    echo -e "  Configured Server Target: ${CYAN}${base_url}${NC}"
 
     mkdir -p "${INSTALL_DIR}/public/downloads" /root/accounting_windows_setup
 
-    # Run the Node packager script
+    # 1. Compile base executable if mingw compiler exists and base exe is missing
+    if [[ ! -f "${INSTALL_DIR}/windows_setup/Hesabdari-Meh-Client-Base.exe" ]] && command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
+        echo -e "${YELLOW}[*] Compiling native Windows binary using MinGW GCC...${NC}"
+        x86_64-w64-mingw32-gcc -O3 -mwindows -s "${INSTALL_DIR}/windows_setup/launcher_template.c" -o "${INSTALL_DIR}/windows_setup/Hesabdari-Meh-Client-Base.exe" 2>/dev/null
+    fi
+
+    # 2. Run the Node packager script to build EXE & ZIP
     cd "${INSTALL_DIR}" || exit 1
     node "${INSTALL_DIR}/windows_setup/package_windows_bundle.js" "${base_url}"
 
     local zip_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Windows-Client.zip"
-    if [[ -f "${zip_file}" ]]; then
-        cp -f "${zip_file}" /root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip
+    local exe_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Client.exe"
+
+    if [[ -f "${zip_file}" ]] || [[ -f "${exe_file}" ]]; then
+        cp -f "${zip_file}" /root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip 2>/dev/null
+        cp -f "${exe_file}" /root/accounting_windows_setup/Hesabdari-Meh-Client.exe 2>/dev/null
+        cp -f "${exe_file}" /root/accounting_windows_setup/حسابداری_مَه.exe 2>/dev/null
         cp -r "${INSTALL_DIR}/windows_setup/"* /root/accounting_windows_setup/ 2>/dev/null
+        
         local zip_size
-        zip_size=$(du -h "${zip_file}" | cut -f1)
+        zip_size=$(du -h "${zip_file}" 2>/dev/null | cut -f1 || echo "0KB")
+        local exe_size
+        exe_size=$(du -h "${exe_file}" 2>/dev/null | cut -f1 || echo "0KB")
 
         echo -e "\n${GREEN}====================================================================${NC}"
-        echo -e "${WHITE}   [✓] Windows Client Package Built & Placed on Server!          ${NC}"
+        echo -e "${WHITE}   [✓] Windows Executable (.EXE) & Client Package Ready!        ${NC}"
         echo -e "${GREEN}====================================================================${NC}"
-        echo -e "  ${YELLOW}Direct Web Download Link:${NC}"
-        echo -e "  ${GREEN}➔ ${base_url}/download/windows${NC}"
-        echo -e "  ${GREEN}➔ ${base_url}/api/download/windows-client${NC}"
+        echo -e "  ${YELLOW}Direct Web Download Links (Open in browser on Windows):${NC}"
+        echo -e "  ${GREEN}➔ دانلود مستقیم فایل اگزه (.EXE):${NC}  ${CYAN}${base_url}/download/exe${NC}"
+        echo -e "  ${GREEN}➔ دانلود بسته کامل فشرده (ZIP):${NC}    ${CYAN}${base_url}/download/windows${NC}"
         echo -e ""
-        echo -e "  ${YELLOW}Local Server Path:${NC}"
-        echo -e "  - ${CYAN}/root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip${NC} (${zip_size})"
-        echo -e "  - ${CYAN}${zip_file}${NC}"
+        echo -e "  ${YELLOW}Local Server Paths in /root/accounting_windows_setup/:${NC}"
+        echo -e "  - ${GREEN}[EXE]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Client.exe${NC} (${exe_size})"
+        echo -e "  - ${GREEN}[EXE]${NC} ${WHITE}/root/accounting_windows_setup/حسابداری_مَه.exe${NC} (${exe_size})"
+        echo -e "  - ${GREEN}[ZIP]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip${NC} (${zip_size})"
         echo -e ""
-        echo -e "  ${WHITE}How to Use on Windows Computers:${NC}"
-        echo -e "  1. Open ${CYAN}${base_url}/download/windows${NC} in any browser on Windows."
-        echo -e "  2. Extract the ZIP file and double-click ${YELLOW}اجرای_حسابداری_مه.cmd${NC}."
-        echo -e "  3. The software opens instantly as a fast, native desktop app connected"
-        echo -e "     directly to this server!"
+        echo -e "  ${WHITE}نحوه استفاده در ویندوز:${NC}"
+        echo -e "  ۱. فایل ${YELLOW}Hesabdari-Meh-Client.exe${NC} را دانلود کرده یا از پوشه ZIP استخراج کنید."
+        echo -e "  ۲. مستقیماً روی فایل اگزه دوبار کلیک کنید تا سامانه اجرا و متصل شود."
         echo -e "${GREEN}====================================================================${NC}\n"
     else
-        echo -e "${RED}[!] Failed to generate zip bundle. Please check Node.js installation.${NC}"
+        echo -e "${RED}[!] Failed to generate windows bundle. Please check Node.js installation.${NC}"
     fi
 }
 

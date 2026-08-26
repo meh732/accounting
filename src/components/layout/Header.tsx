@@ -379,30 +379,42 @@ export const Header: React.FC<HeaderProps> = ({
                 </ul>
               </div>
 
-              {/* Direct Download Action */}
+              {/* Direct Download Actions */}
               <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="font-bold text-slate-800">بسته آماده کلاینت ویندوز (ZIP)</div>
-                    <div className="text-[11px] text-slate-500">حجم کم • همراه با لانچر اختصاصی و شورت‌کات دسکتاپ</div>
+                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 rounded font-mono font-bold">.EXE</span>
+                      <span>فایل اجرایی مستقیم ویندوز</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">حجم فقط ۴۰ کیلوبایت • اجرای مستقیم بدون نیاز به اکسترکت</div>
+                  </div>
+                  <a
+                    href="/download/exe"
+                    download="Hesabdari-Meh-Client.exe"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>دانلود EXE</span>
+                  </a>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-800 rounded font-mono font-bold">ZIP</span>
+                      <span>بسته کامل کلاینت ویندوز</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">شامل فایل اگزه، لانچر، و اسکریپت ساخت میانبر روی دسکتاپ</div>
                   </div>
                   <a
                     href="/download/windows"
                     download="Hesabdari-Meh-Windows-Client.zip"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
                   >
                     <Download className="w-4 h-4" />
-                    <span>دانلود فایل ZIP</span>
+                    <span>دانلود ZIP</span>
                   </a>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-600 space-y-1">
-                  <div className="font-bold text-slate-700">مراحل اجرا در ۳ ثانیه:</div>
-                  <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                    <li>فایل ZIP دانلود شده را Extract کنید.</li>
-                    <li>روی <span className="font-mono font-bold text-indigo-700">اجرای_حسابداری_مه.cmd</span> کلیک کنید.</li>
-                    <li>برای ساخت آیکون روی دسکتاپ، روی <span className="font-mono font-bold text-indigo-700">ایجاد_میانبر_روی_دسکتاپ.vbs</span> کلیک کنید.</li>
-                  </ol>
                 </div>
               </div>
 

@@ -487,6 +487,28 @@ ${serverUrl}
 
 ===================================================================
 `;
+      // Add standalone compiled Windows .EXE binary into ZIP
+      const baseExePath = path.join(process.cwd(), 'windows_setup', 'Hesabdari-Meh-Client-Base.exe');
+      if (fs.existsSync(baseExePath)) {
+        try {
+          const rawExe = fs.readFileSync(baseExePath);
+          const startMarker = '###HESABDARI_MEH_SERVER_URL_START###';
+          const endMarker = '###HESABDARI_MEH_SERVER_URL_END###';
+          const markerIndex = rawExe.indexOf(Buffer.from(startMarker, 'utf-8'));
+          let finalExe = rawExe;
+          if (markerIndex !== -1) {
+            const newPayload = `${startMarker}${serverUrl}${endMarker}`;
+            finalExe = Buffer.from(rawExe);
+            finalExe.fill(0, markerIndex, markerIndex + 2048);
+            finalExe.write(newPayload, markerIndex, 'utf-8');
+          }
+          zip.file('Hesabdari-Meh-Client.exe', finalExe);
+          zip.file('حسابداری_مَه.exe', finalExe);
+        } catch (e) {
+          console.error('[Server Download] Error patching exe for zip:', e);
+        }
+      }
+
       zip.file('راهنمای_استفاده_کلاینت.txt', instructions);
 
       const winSetupDir = path.join(process.cwd(), 'windows_setup');
@@ -513,9 +535,46 @@ ${serverUrl}
     }
   };
 
+  // Direct .EXE executable download handler
+  const handleExeDownload = (req: express.Request, res: express.Response) => {
+    try {
+      const host = req.get('host') || `localhost:${PORT}`;
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      const serverUrl = `${protocol}://${host}`;
+
+      const baseExePath = path.join(process.cwd(), 'windows_setup', 'Hesabdari-Meh-Client-Base.exe');
+      if (!fs.existsSync(baseExePath)) {
+        return res.status(404).send('Base executable template not found.');
+      }
+
+      const rawExe = fs.readFileSync(baseExePath);
+      const startMarker = '###HESABDARI_MEH_SERVER_URL_START###';
+      const endMarker = '###HESABDARI_MEH_SERVER_URL_END###';
+      const markerIndex = rawExe.indexOf(Buffer.from(startMarker, 'utf-8'));
+      let finalExe = rawExe;
+      if (markerIndex !== -1) {
+        const newPayload = `${startMarker}${serverUrl}${endMarker}`;
+        finalExe = Buffer.from(rawExe);
+        finalExe.fill(0, markerIndex, markerIndex + 2048);
+        finalExe.write(newPayload, markerIndex, 'utf-8');
+      }
+
+      res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
+      res.setHeader('Content-Disposition', 'attachment; filename="Hesabdari-Meh-Client.exe"');
+      res.setHeader('Content-Length', finalExe.length);
+      res.send(finalExe);
+    } catch (err) {
+      console.error('[Server EXE Download] Error:', err);
+      res.status(500).send('Failed to serve exe');
+    }
+  };
+
   app.get('/download/windows', handleWindowsDownload);
   app.get('/api/download/windows-client', handleWindowsDownload);
   app.get('/api/download/windows', handleWindowsDownload);
+  app.get('/download/exe', handleExeDownload);
+  app.get('/download/client.exe', handleExeDownload);
+  app.get('/api/download/exe', handleExeDownload);
 
   // Serve Frontend via Vite in development, or Static Files in production
   if (process.env.NODE_ENV !== 'production') {

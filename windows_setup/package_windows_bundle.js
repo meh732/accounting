@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import JSZip from 'jszip';
+import { generateWindowsExeWithUrl } from './exe_patcher.js';
 
 function addDirectoryToZip(zip, folderPath, zipBasePath = '') {
   if (!fs.existsSync(folderPath)) return;
@@ -10,12 +11,11 @@ function addDirectoryToZip(zip, folderPath, zipBasePath = '') {
   for (const item of items) {
     if (item === 'node_modules' || item === '.git' || item === 'target' || item === 'dist') continue;
     const fullPath = path.join(folderPath, item);
-    const zipPath = zipBasePath ? `${zipBasePath}/${item}` : item;
     const stat = fs.statSync(fullPath);
 
     if (stat.isDirectory()) {
       const folderZip = zip.folder(item);
-      addDirectoryToZip(folderZip, fullPath, '');
+      if (folderZip) addDirectoryToZip(folderZip, fullPath, '');
     } else {
       zip.file(item, fs.readFileSync(fullPath));
     }
@@ -29,9 +29,25 @@ export async function createWindowsClientZip(serverUrl = 'http://localhost:3000'
   }
 
   const finalZipPath = outputPath || path.join(targetDir, 'Hesabdari-Meh-Windows-Client.zip');
+  const standaloneExePath = path.join(targetDir, 'Hesabdari-Meh-Client.exe');
+
+  // 1. Generate the Standalone Windows Executable (.exe)
+  try {
+    generateWindowsExeWithUrl(serverUrl, standaloneExePath);
+    console.log(`[Windows Builder] Standalone .exe generated: ${standaloneExePath}`);
+  } catch (err) {
+    console.error('[Windows Builder] Could not generate standalone .exe:', err);
+  }
+
   const zip = new JSZip();
 
-  // 1. Hesabdari-Meh.cmd / .bat Launcher
+  // 2. Add the standalone compiled .exe into the root of the ZIP
+  if (fs.existsSync(standaloneExePath)) {
+    zip.file('Hesabdari-Meh-Client.exe', fs.readFileSync(standaloneExePath));
+    zip.file('حسابداری_مَه.exe', fs.readFileSync(standaloneExePath));
+  }
+
+  // 3. Hesabdari-Meh.cmd / .bat Launcher
   const launcherScript = `@echo off
 chcp 65001 >nul
 title حسابداری مَه - نسخه کلاینت ویندوز
@@ -75,12 +91,18 @@ exit /b 0
   zip.file('اجرای_حسابداری_مه.cmd', launcherScript);
   zip.file('Hesabdari-Meh-Launcher.bat', launcherScript);
 
-  // 2. Desktop Shortcut Creator (VBS)
+  // 4. Desktop Shortcut Creator (VBS)
   const shortcutCreator = `Set oWS = WScript.CreateObject("WScript.Shell")
 sLinkFile = oWS.SpecialFolders("Desktop") & "\\حسابداری مَه.lnk"
 Set oLink = oWS.CreateShortcut(sLinkFile)
 sCurrentDir = oWS.CurrentDirectory
-oLink.TargetPath = sCurrentDir & "\\اجرای_حسابداری_مه.cmd"
+
+If oWS.FileExists(sCurrentDir & "\\Hesabdari-Meh-Client.exe") Then
+    oLink.TargetPath = sCurrentDir & "\\Hesabdari-Meh-Client.exe"
+Else
+    oLink.TargetPath = sCurrentDir & "\\اجرای_حسابداری_مه.cmd"
+End If
+
 oLink.WorkingDirectory = sCurrentDir
 oLink.Description = "نرم افزار حسابداری مَه - کلاینت ویندوز"
 oLink.WindowStyle = 7
@@ -89,35 +111,35 @@ WScript.Echo "میانبر حسابداری مَه با موفقیت روی دس
 `;
   zip.file('ایجاد_میانبر_روی_دسکتاپ.vbs', shortcutCreator);
 
-  // 3. User Guide
+  // 5. User Guide
   const instructions = `===================================================================
       راهنمای اجرای سریع کلاینت ویندوز - سامانه حسابداری مَه
 ===================================================================
 
-این بسته شامل کلاینت آماده و فوق‌العاده سبک ویندوز می‌باشد.
-شما نیاز به نصب هیچ نرم‌افزار اضافی یا کامپایلر ندارید!
+این بسته شامل فایل اجرایی مستقل (.exe) و کلاینت آماده و سبک ویندوز می‌باشد.
+بدون نیاز به نصب هرگونه پیش‌نیاز یا فریم‌ورک سنگین!
 
-نحوه استفاده در کامپیوترهای ویندوزی:
-۱. فایل ZIP را از حالت فشرده خارج (Extract) کنید.
-۲. روی فایل «اجرای_حسابداری_مه.cmd» دوبار کلیک کنید.
-۳. برنامه در قالب یک نرم‌افزار مستقل، روان و بدون کادر مرورگر باز می‌شود.
+روش‌های اجرا در کامپیوترهای ویندوزی:
+روش ۱ (فایل اگزه):
+- مستقیماً روی فایل «Hesabdari-Meh-Client.exe» یا «حسابداری_مَه.exe» دوبار کلیک کنید.
+
+روش ۲ (لانچر سریع):
+- روی فایل «اجرای_حسابداری_مه.cmd» دوبار کلیک کنید.
 
 ایجاد میانبر روی دسکتاپ:
 - کافی است روی فایل «ایجاد_میانبر_روی_دسکتاپ.vbs» دوبار کلیک کنید تا آیکون میانبر مستقیماً روی صفحه دسکتاپ شما قرار گیرد.
 
 آدرس اتصال متمرکز سرور:
 ${serverUrl}
-
-همچنین فایل‌های اسکریپت و سورس پروژه در پوشه windows_setup ضمیمه شده است.
 ===================================================================
 `;
   zip.file('راهنمای_استفاده_کلاینت.txt', instructions);
 
-  // 4. Windows Setup Scripts folder
+  // 6. Windows Setup Scripts folder
   const winSetupDir = path.join(process.cwd(), 'windows_setup');
   if (fs.existsSync(winSetupDir)) {
     const folder = zip.folder('windows_setup');
-    addDirectoryToZip(folder, winSetupDir);
+    if (folder) addDirectoryToZip(folder, winSetupDir);
   }
 
   // Generate buffer and write to file
@@ -129,14 +151,14 @@ ${serverUrl}
 
   fs.writeFileSync(finalZipPath, buffer);
   console.log(`[Windows Builder] Bundle created successfully: ${finalZipPath} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
-  return finalZipPath;
+  return { zipPath: finalZipPath, exePath: standaloneExePath };
 }
 
 // Direct execution from CLI
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const argUrl = process.argv[2] || 'http://localhost:3000';
   createWindowsClientZip(argUrl)
-    .then((filePath) => console.log(`Finished: ${filePath}`))
+    .then((result) => console.log(`Finished: ZIP=${result.zipPath}, EXE=${result.exePath}`))
     .catch((err) => {
       console.error(err);
       process.exit(1);
