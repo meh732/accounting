@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { JournalVoucher, VoucherItem, VoucherStatus } from '../../types/accounting';
 import { useAccounting } from '../../context/AccountingContext';
 import { getCurrentShamsiDate, formatCurrency, numberToWordsPersian } from '../../utils/dateUtils';
-import { X, Plus, Trash2, FileSpreadsheet, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Plus, Trash2, FileSpreadsheet, CheckCircle2, AlertCircle } from 'lucide-react';
 import { SearchableAccountSelect } from '../common/SearchableAccountSelect';
 
 interface VoucherModalProps {

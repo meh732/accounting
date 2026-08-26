@@ -11,8 +11,8 @@ echo 1. بررسی و نصب وابستگی‌ها در صورت نیاز...
 call npm install
 
 echo.
-echo 2. ساخت فایل نصبی کلاینت ویندوز (Client Setup Installer)...
-call npm run dist:client
+echo 2. ساخت فایل نصبی فوق‌العاده سبک و سریع کلاینت ویندوز با توری (Tauri Native Client)...
+call npm run dist:tauri
 
 echo.
 echo 3. ساخت فایل اجرایی سرور ویندوز (Standalone Server .exe)...
@@ -23,7 +23,7 @@ echo ===================================================================
 echo   عملیات با موفقیت انجام شد!
 echo.
 echo   فایل‌های خروجی:
-echo   - فایل نصبی کلاینت: در پوشه release\ قرار دارد (فایل Setup .exe)
+echo   - فایل نصبی بسیار سبک کلاینت: در پوشه src-tauri\target\release\bundle\nsis\ یا msi\
 echo   - فایل اجرایی سرور: در پوشه dist-server\Hesabdari-Meh-Server.exe
 echo ===================================================================
 pause

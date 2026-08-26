@@ -31,7 +31,6 @@ import {
   CornerDownLeft,
   Split,
   Layers,
-  Sparkles,
   Smartphone,
   Monitor,
   CheckCircle2,

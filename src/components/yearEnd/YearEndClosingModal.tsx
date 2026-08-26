@@ -11,7 +11,6 @@ import {
   ArrowLeft,
   FileSpreadsheet,
   Layers,
-  Sparkles,
   X,
   History,
   TrendingUp,

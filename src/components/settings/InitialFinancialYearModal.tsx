@@ -6,7 +6,6 @@ import {
   Coins,
   ShieldCheck,
   CheckCircle2,
-  Sparkles,
   ArrowLeft
 } from 'lucide-react';
 import { getCurrentShamsiDate } from '../../utils/dateUtils';
@@ -72,7 +71,7 @@ export const InitialFinancialYearModal: React.FC<InitialFinancialYearModalProps>
         <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-slate-900 text-white p-5">
           <div className="flex items-center gap-2.5 mb-1.5">
             <div className="p-2 bg-white/10 rounded-xl">
-              <Sparkles className="w-5 h-5 text-amber-300" />
+              <Building2 className="w-5 h-5 text-amber-300" />
             </div>
             <div>
               <h2 className="text-base font-bold">راه‌اندازی اولیه و تعریف سال مالی</h2>
