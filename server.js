@@ -403,12 +403,32 @@ const handleExeDownload = (req, res) => {
   }
 };
 
+// Standalone Server package download handler
+const handleServerBundleDownload = (req, res) => {
+  try {
+    const serverZipPath = path.join(process.cwd(), 'public', 'downloads', 'Hesabdari-Meh-Standalone-Server.zip');
+    if (fs.existsSync(serverZipPath)) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="Hesabdari-Meh-Standalone-Server.zip"');
+      return res.sendFile(serverZipPath);
+    }
+    res.status(404).send('Standalone server package not found. Run package script first.');
+  } catch (err) {
+    console.error('[Server Bundle Download] Error:', err);
+    res.status(500).send('Failed to serve server bundle');
+  }
+};
+
 app.get('/download/windows', handleWindowsDownload);
+app.get('/download/client', handleWindowsDownload);
 app.get('/api/download/windows-client', handleWindowsDownload);
 app.get('/api/download/windows', handleWindowsDownload);
 app.get('/download/exe', handleExeDownload);
 app.get('/download/client.exe', handleExeDownload);
 app.get('/api/download/exe', handleExeDownload);
+app.get('/download/server', handleServerBundleDownload);
+app.get('/download/server.zip', handleServerBundleDownload);
+app.get('/api/download/server', handleServerBundleDownload);
 
 // Determine dist directory for static frontend
 let distPath = path.join(__dirname, 'dist');

@@ -381,13 +381,14 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* Direct Download Actions */}
               <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                {/* 1. Client EXE */}
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 rounded font-mono font-bold">.EXE</span>
-                      <span>فایل اجرایی مستقیم ویندوز</span>
+                      <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 rounded font-mono font-bold">کلاینت .EXE</span>
+                      <span>فایل کلاینت ویندوز (کامپیوتر دوم)</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">حجم فقط ۴۰ کیلوبایت • اجرای مستقیم بدون نیاز به اکسترکت</div>
+                    <div className="text-[11px] text-slate-500">حجم ۴۰ کیلوبایت • اتصال مستقیم به سرور بدون نیاز به نصب یا سورس‌کد</div>
                   </div>
                   <a
                     href="/download/exe"
@@ -395,21 +396,41 @@ export const Header: React.FC<HeaderProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
                   >
                     <Download className="w-4 h-4" />
-                    <span>دانلود EXE</span>
+                    <span>دانلود کلاینت</span>
                   </a>
                 </div>
 
+                {/* 2. Standalone Server Portable Bundle */}
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-800 rounded font-mono font-bold">سرور پرتابل</span>
+                      <span>بسته سرور مستقل ویندوز (کامپیوتر اصلی)</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">شامل دیتابیس و انجین پرتابل با یک کلیک • بدون نیاز به Node.js یا اینترنت</div>
+                  </div>
+                  <a
+                    href="/download/server"
+                    download="Hesabdari-Meh-Standalone-Server.zip"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>دانلود سرور</span>
+                  </a>
+                </div>
+
+                {/* 3. Full Client ZIP */}
                 <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
                   <div>
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <span className="px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-800 rounded font-mono font-bold">ZIP</span>
-                      <span>بسته کامل کلاینت ویندوز</span>
+                      <span>بسته کلاینت با میانبر دسکتاپ</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">شامل فایل اگزه، لانچر، و اسکریپت ساخت میانبر روی دسکتاپ</div>
+                    <div className="text-[11px] text-slate-500">شامل فایل اگزه، لانچر، و اسکریپت ساخت میانبر خودکار روی دسکتاپ</div>
                   </div>
                   <a
-                    href="/download/windows"
-                    download="Hesabdari-Meh-Windows-Client.zip"
+                    href="/download/client"
+                    download="Hesabdari-Meh-Client.zip"
                     className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
                   >
                     <Download className="w-4 h-4" />

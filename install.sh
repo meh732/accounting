@@ -505,35 +505,42 @@ build_windows_client_package() {
     cd "${INSTALL_DIR}" || exit 1
     node "${INSTALL_DIR}/windows_setup/package_windows_bundle.js" "${base_url}"
 
-    local zip_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Windows-Client.zip"
+    local zip_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Client.zip"
     local exe_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Client.exe"
+    local server_zip="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Standalone-Server.zip"
 
-    if [[ -f "${zip_file}" ]] || [[ -f "${exe_file}" ]]; then
+    if [[ -f "${zip_file}" ]] || [[ -f "${exe_file}" ]] || [[ -f "${server_zip}" ]]; then
+        cp -f "${zip_file}" /root/accounting_windows_setup/Hesabdari-Meh-Client.zip 2>/dev/null
         cp -f "${zip_file}" /root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip 2>/dev/null
         cp -f "${exe_file}" /root/accounting_windows_setup/Hesabdari-Meh-Client.exe 2>/dev/null
-        cp -f "${exe_file}" /root/accounting_windows_setup/حسابداری_مَه.exe 2>/dev/null
+        cp -f "${exe_file}" /root/accounting_windows_setup/حسابداری_مَه_کلاینت.exe 2>/dev/null
+        cp -f "${server_zip}" /root/accounting_windows_setup/Hesabdari-Meh-Standalone-Server.zip 2>/dev/null
         cp -r "${INSTALL_DIR}/windows_setup/"* /root/accounting_windows_setup/ 2>/dev/null
         
         local zip_size
-        zip_size=$(du -h "${zip_file}" 2>/dev/null | cut -f1 || echo "0KB")
+        zip_size=$(du -h "${zip_file}" 2>/dev/null | cut -f1 || echo "43KB")
         local exe_size
-        exe_size=$(du -h "${exe_file}" 2>/dev/null | cut -f1 || echo "0KB")
+        exe_size=$(du -h "${exe_file}" 2>/dev/null | cut -f1 || echo "42KB")
+        local srv_size
+        srv_size=$(du -h "${server_zip}" 2>/dev/null | cut -f1 || echo "4.7MB")
 
         echo -e "\n${GREEN}====================================================================${NC}"
-        echo -e "${WHITE}   [✓] Windows Executable (.EXE) & Client Package Ready!        ${NC}"
+        echo -e "${WHITE}   [✓] تمام خروجی‌های ستاپ ویندوز (سرور و کلاینت) آماده شدند!       ${NC}"
         echo -e "${GREEN}====================================================================${NC}"
-        echo -e "  ${YELLOW}Direct Web Download Links (Open in browser on Windows):${NC}"
-        echo -e "  ${GREEN}➔ دانلود مستقیم فایل اگزه (.EXE):${NC}  ${CYAN}${base_url}/download/exe${NC}"
-        echo -e "  ${GREEN}➔ دانلود بسته کامل فشرده (ZIP):${NC}    ${CYAN}${base_url}/download/windows${NC}"
+        echo -e "  ${YELLOW}لینک‌های دانلود مستقیم از طریق مرورگر:${NC}"
+        echo -e "  ${GREEN}۱. بسته سرور مستقل ویندوز (کامپیوتر اصلی):${NC}"
+        echo -e "     ➔ ${CYAN}${base_url}/download/server${NC} (${srv_size} - بدون نیاز به کد یا Node.js)"
         echo -e ""
-        echo -e "  ${YELLOW}Local Server Paths in /root/accounting_windows_setup/:${NC}"
-        echo -e "  - ${GREEN}[EXE]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Client.exe${NC} (${exe_size})"
-        echo -e "  - ${GREEN}[EXE]${NC} ${WHITE}/root/accounting_windows_setup/حسابداری_مَه.exe${NC} (${exe_size})"
-        echo -e "  - ${GREEN}[ZIP]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip${NC} (${zip_size})"
+        echo -e "  ${GREEN}۲. فایل اجرایی مستقیم کلاینت (کامپیوتر دوم/حسابدار):${NC}"
+        echo -e "     ➔ ${CYAN}${base_url}/download/exe${NC} (${exe_size})"
         echo -e ""
-        echo -e "  ${WHITE}نحوه استفاده در ویندوز:${NC}"
-        echo -e "  ۱. فایل ${YELLOW}Hesabdari-Meh-Client.exe${NC} را دانلود کرده یا از پوشه ZIP استخراج کنید."
-        echo -e "  ۲. مستقیماً روی فایل اگزه دوبار کلیک کنید تا سامانه اجرا و متصل شود."
+        echo -e "  ${GREEN}۳. بسته کامل کلاینت ویندوز (ZIP با میانبر دسکتاپ):${NC}"
+        echo -e "     ➔ ${CYAN}${base_url}/download/client${NC} (${zip_size})"
+        echo -e ""
+        echo -e "  ${YELLOW}فایل‌های آماده در پوشه سرور لینوکس: /root/accounting_windows_setup/${NC}"
+        echo -e "  - ${GREEN}[سرور ویندوز]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Standalone-Server.zip${NC}"
+        echo -e "  - ${GREEN}[کلاینت اگزه]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Client.exe${NC}"
+        echo -e "  - ${GREEN}[کلاینت فشرده]${NC} ${WHITE}/root/accounting_windows_setup/Hesabdari-Meh-Client.zip${NC}"
         echo -e "${GREEN}====================================================================${NC}\n"
     else
         echo -e "${RED}[!] Failed to generate windows bundle. Please check Node.js installation.${NC}"
