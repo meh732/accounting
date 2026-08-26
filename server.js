@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import JSZip from 'jszip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -217,6 +218,138 @@ app.post('/api/reset', (req, res) => {
     res.status(500).json({ error: 'Failed to reset server database' });
   }
 });
+
+// Helper function to add folders to zip
+function addFolderToZip(zip, folderPath) {
+  if (!fs.existsSync(folderPath)) return;
+  const items = fs.readdirSync(folderPath);
+  for (const item of items) {
+    if (item === 'node_modules' || item === '.git' || item === 'target' || item === 'dist') continue;
+    const fullPath = path.join(folderPath, item);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      const folderZip = zip.folder(item);
+      if (folderZip) addFolderToZip(folderZip, fullPath);
+    } else {
+      zip.file(item, fs.readFileSync(fullPath));
+    }
+  }
+}
+
+// Direct Windows Client Download (.zip bundle generated directly on server)
+const handleWindowsDownload = async (req, res) => {
+  try {
+    const host = req.get('host') || `localhost:${PORT}`;
+    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    const serverUrl = `${protocol}://${host}`;
+
+    const zip = new JSZip();
+
+    const launcherContent = `@echo off
+chcp 65001 >nul
+title حسابداری مَه - نسخه کلاینت ویندوز
+cls
+echo ===================================================================
+echo             سامانه جامع حسابداری و مالی مَه
+echo ===================================================================
+echo در حال اجرای نسخه اختصاصی و سبک ویندوز...
+echo آدرس سرور: ${serverUrl}
+echo ===================================================================
+
+set "SERVER_TARGET_URL=${serverUrl}"
+if not "%~1"=="" set "SERVER_TARGET_URL=%~1"
+
+:: 1. Microsoft Edge (Native WebView2 App Mode on Windows 10/11)
+if exist "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe" (
+    start "" "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe" --app="%SERVER_TARGET_URL%" --window-size=1366,768 --user-data-dir="%LOCALAPPDATA%\\HesabdariMehClient"
+    exit /b 0
+)
+
+if exist "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe" (
+    start "" "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe" --app="%SERVER_TARGET_URL%" --window-size=1366,768 --user-data-dir="%LOCALAPPDATA%\\HesabdariMehClient"
+    exit /b 0
+)
+
+:: 2. Google Chrome App Mode
+if exist "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe" --app="%SERVER_TARGET_URL%" --window-size=1366,768 --user-data-dir="%LOCALAPPDATA%\\HesabdariMehClient"
+    exit /b 0
+)
+
+if exist "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe" --app="%SERVER_TARGET_URL%" --window-size=1366,768 --user-data-dir="%LOCALAPPDATA%\\HesabdariMehClient"
+    exit /b 0
+)
+
+:: 3. Default Browser Fallback
+start "" "%SERVER_TARGET_URL%"
+exit /b 0
+`;
+    zip.file('اجرای_حسابداری_مه.cmd', launcherContent);
+    zip.file('Hesabdari-Meh-Launcher.bat', launcherContent);
+
+    const shortcutContent = `Set oWS = WScript.CreateObject("WScript.Shell")
+sLinkFile = oWS.SpecialFolders("Desktop") & "\\حسابداری مَه.lnk"
+Set oLink = oWS.CreateShortcut(sLinkFile)
+sCurrentDir = oWS.CurrentDirectory
+oLink.TargetPath = sCurrentDir & "\\اجرای_حسابداری_مه.cmd"
+oLink.WorkingDirectory = sCurrentDir
+oLink.Description = "نرم افزار حسابداری مَه - کلاینت ویندوز"
+oLink.WindowStyle = 7
+oLink.Save
+WScript.Echo "میانبر حسابداری مَه با موفقیت روی دسکتاپ ویندوز ایجاد شد."
+`;
+    zip.file('ایجاد_میانبر_روی_دسکتاپ.vbs', shortcutContent);
+
+    const instructions = `===================================================================
+      راهنمای اجرای سریع کلاینت ویندوز - سامانه حسابداری مَه
+===================================================================
+
+این بسته شامل کلاینت آماده و فوق‌العاده سبک ویندوز می‌باشد.
+شما نیاز به نصب هیچ نرم‌افزار اضافی یا کامپایلر ندارید!
+
+نحوه استفاده در کامپیوترهای ویندوزی:
+۱. این فایل ZIP را از حالت فشرده خارج (Extract) کنید.
+۲. روی فایل «اجرای_حسابداری_مه.cmd» دوبار کلیک کنید.
+۳. برنامه در قالب یک نرم‌افزار مستقل، روان و بدون کادر مرورگر باز می‌شود.
+
+ایجاد میانبر روی دسکتاپ:
+- کافی است روی فایل «ایجاد_میانبر_روی_دسکتاپ.vbs» دوبار کلیک کنید تا آیکون میانبر مستقیماً روی صفحه دسکتاپ شما قرار گیرد.
+
+آدرس اتصال متمرکز سرور:
+${serverUrl}
+
+===================================================================
+`;
+    zip.file('راهنمای_استفاده_کلاینت.txt', instructions);
+
+    const winSetupDir = path.join(process.cwd(), 'windows_setup');
+    if (fs.existsSync(winSetupDir)) {
+      const folder = zip.folder('windows_setup');
+      if (folder) addFolderToZip(folder, winSetupDir);
+    }
+
+    const zipBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 }
+    });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="Hesabdari-Meh-Windows-Client.zip"');
+    res.setHeader('Content-Length', zipBuffer.length);
+    res.send(zipBuffer);
+  } catch (err) {
+    console.error('[Server Download] Error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to create windows download bundle' });
+    }
+  }
+};
+
+app.get('/download/windows', handleWindowsDownload);
+app.get('/api/download/windows-client', handleWindowsDownload);
+app.get('/api/download/windows', handleWindowsDownload);
 
 // Determine dist directory for static frontend
 let distPath = path.join(__dirname, 'dist');

@@ -17,7 +17,13 @@ import {
   Cloud,
   RefreshCw,
   Server,
-  Smartphone
+  Smartphone,
+  Monitor,
+  Download,
+  X,
+  CheckCircle2,
+  ExternalLink,
+  Laptop
 } from 'lucide-react';
 import { getCurrentShamsiDate } from '../../utils/dateUtils';
 
@@ -43,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { settings, updateSettings, autoBackupSnapshots, serverSyncStatus, lastServerSyncTime, syncWithServer } = useAccounting();
   const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [showWindowsModal, setShowWindowsModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
@@ -245,6 +252,17 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
+          {/* Windows Client Download Button */}
+          <button
+            id="btn-download-windows-client"
+            onClick={() => setShowWindowsModal(true)}
+            title="دانلود نسخه مخصوص کلاینت ویندوز (سبک و بدون نیاز به نصب)"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 rounded-lg transition border border-sky-200"
+          >
+            <Monitor className="w-3.5 h-3.5 text-sky-600" />
+            <span className="hidden sm:inline">نسخه ویندوز</span>
+          </button>
+
           {/* Backup & Restore Center Button */}
           <button
             id="btn-open-backup-manager"
@@ -322,6 +340,125 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Windows Client Download & Setup Modal */}
+      {showWindowsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-sky-700 to-indigo-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Monitor className="w-5 h-5 text-sky-200" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">دانلود نسخه کلاینت ویندوز</h3>
+                  <p className="text-[11px] text-sky-100 mt-0.5">آماده اجرا در چند ثانیه، فوق‌العاده سبک و متصل مستقیم به سرور</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWindowsModal(false)}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+              <div className="p-3.5 bg-sky-50 border border-sky-100 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 font-bold text-sky-900 text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>ویژگی‌های نسخه سبک ویندوز:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-sky-800 pr-1">
+                  <li>بدون نیاز به نصب پیش‌نیاز یا کامپایلر (پرتابل و آماده اجرا)</li>
+                  <li>مصرف رم کمتر از ۳۰ مگابایت و اجرای بدون تاخیر</li>
+                  <li>اتصال لحظه‌ای خودکار به این سرور مرکزی ({window.location.origin})</li>
+                  <li>امکان ایجاد آیکون میانبر رسمی روی دسکتاپ ویندوز</li>
+                </ul>
+              </div>
+
+              {/* Direct Download Action */}
+              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-slate-800">بسته آماده کلاینت ویندوز (ZIP)</div>
+                    <div className="text-[11px] text-slate-500">حجم کم • همراه با لانچر اختصاصی و شورت‌کات دسکتاپ</div>
+                  </div>
+                  <a
+                    href="/download/windows"
+                    download="Hesabdari-Meh-Windows-Client.zip"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>دانلود فایل ZIP</span>
+                  </a>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+                  <div className="font-bold text-slate-700">مراحل اجرا در ۳ ثانیه:</div>
+                  <ol className="list-decimal list-inside space-y-0.5 pr-1">
+                    <li>فایل ZIP دانلود شده را Extract کنید.</li>
+                    <li>روی <span className="font-mono font-bold text-indigo-700">اجرای_حسابداری_مه.cmd</span> کلیک کنید.</li>
+                    <li>برای ساخت آیکون روی دسکتاپ، روی <span className="font-mono font-bold text-indigo-700">ایجاد_میانبر_روی_دسکتاپ.vbs</span> کلیک کنید.</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* PWA Alternative */}
+              <div className="flex items-center justify-between p-3 border border-slate-200 rounded-xl bg-white">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+                    <Laptop className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">نصب به عنوان وب‌اپلیکیشن (PWA)</div>
+                    <div className="text-[10px] text-slate-500">نصب در مرورگر کروم یا اج بدون دانلود فایل</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWindowsModal(false);
+                    handleInstallPWA();
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition"
+                >
+                  نصب PWA
+                </button>
+              </div>
+
+              {/* Direct Server URL for clients */}
+              <div className="p-3 bg-slate-100 rounded-xl text-[11px] text-slate-600 flex items-center justify-between gap-2">
+                <div className="space-y-0.5 truncate">
+                  <div className="font-bold text-slate-700">لینک مستقیم دانلود برای سایر کامپیوترها:</div>
+                  <div className="font-mono text-indigo-600 truncate">{window.location.origin}/download/windows</div>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/download/windows`);
+                    alert('لینک دانلود در حافظه کپی شد.');
+                  }}
+                  className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-slate-50 transition shrink-0"
+                >
+                  کپی لینک
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setShowWindowsModal(false)}
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg transition"
+              >
+                بستن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

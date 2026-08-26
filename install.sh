@@ -466,6 +466,68 @@ uninstall_app() {
     echo -e "${GREEN}====================================================================${NC}\n"
 }
 
+# 14. Build & Export Ready Windows Client (.exe / ZIP & Direct Web Download)
+build_windows_client_package() {
+    print_banner
+    echo -e "${WHITE}=== 14. Build & Export Ready Windows Client Package ===${NC}\n"
+
+    if [[ ! -d "${INSTALL_DIR}" ]]; then
+        echo -e "${RED}[ERROR] Accounting system is not installed yet. Choose option 1 first.${NC}"
+        return
+    fi
+
+    local current_port
+    current_port=$(grep -Po 'PORT=\K[0-9]+' "${INSTALL_DIR}/.env" 2>/dev/null || echo "${DEFAULT_PORT}")
+    local server_ip
+    server_ip=$(get_server_ip)
+    local domain
+    domain=$(get_configured_domain)
+
+    local base_url
+    if [ -n "$domain" ]; then
+        base_url="https://${domain}"
+    else
+        base_url="http://${server_ip}:${current_port}"
+    fi
+
+    echo -e "${BLUE}[*] Packaging ready-to-run Windows Client bundle directly on server...${NC}"
+    echo -e "  Configured Server Address: ${CYAN}${base_url}${NC}"
+
+    mkdir -p "${INSTALL_DIR}/public/downloads" /root/accounting_windows_setup
+
+    # Run the Node packager script
+    cd "${INSTALL_DIR}" || exit 1
+    node "${INSTALL_DIR}/windows_setup/package_windows_bundle.js" "${base_url}"
+
+    local zip_file="${INSTALL_DIR}/public/downloads/Hesabdari-Meh-Windows-Client.zip"
+    if [[ -f "${zip_file}" ]]; then
+        cp -f "${zip_file}" /root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip
+        cp -r "${INSTALL_DIR}/windows_setup/"* /root/accounting_windows_setup/ 2>/dev/null
+        local zip_size
+        zip_size=$(du -h "${zip_file}" | cut -f1)
+
+        echo -e "\n${GREEN}====================================================================${NC}"
+        echo -e "${WHITE}   [✓] Windows Client Package Built & Placed on Server!          ${NC}"
+        echo -e "${GREEN}====================================================================${NC}"
+        echo -e "  ${YELLOW}Direct Web Download Link:${NC}"
+        echo -e "  ${GREEN}➔ ${base_url}/download/windows${NC}"
+        echo -e "  ${GREEN}➔ ${base_url}/api/download/windows-client${NC}"
+        echo -e ""
+        echo -e "  ${YELLOW}Local Server Path:${NC}"
+        echo -e "  - ${CYAN}/root/accounting_windows_setup/Hesabdari-Meh-Windows-Client.zip${NC} (${zip_size})"
+        echo -e "  - ${CYAN}${zip_file}${NC}"
+        echo -e ""
+        echo -e "  ${WHITE}How to Use on Windows Computers:${NC}"
+        echo -e "  1. Open ${CYAN}${base_url}/download/windows${NC} in any browser on Windows."
+        echo -e "  2. Extract the ZIP file and double-click ${YELLOW}اجرای_حسابداری_مه.cmd${NC}."
+        echo -e "  3. The software opens instantly as a fast, native desktop app connected"
+        echo -e "     directly to this server!"
+        echo -e "${GREEN}====================================================================${NC}\n"
+    else
+        echo -e "${RED}[!] Failed to generate zip bundle. Please check Node.js installation.${NC}"
+    fi
+}
+
 # Main Interactive Menu (Opens IMMEDIATELY in 0.0 seconds)
 menu() {
     while true; do
@@ -485,7 +547,7 @@ menu() {
         echo -e "${WHITE} 11.${NC}  Restore Data from Backup Archive"
         echo -e "${WHITE} 12.${NC}  Toggle Auto-Start on System Boot"
         echo -e "${WHITE} 13.${NC}  Configure Telegram & Bale Bots"
-        echo -e "${WHITE} 14.${NC}  Export Windows Setup & EXE Builders"
+        echo -e "${WHITE} 14.${NC}  ${GREEN}Build & Export Ready Windows Client (.exe / ZIP & Web Download)${NC}"
         echo -e "${WHITE} 15.${NC}  ${RED}Uninstall System Completely (with Auto-Backup)${NC}"
         echo -e "${CYAN}--------------------------------------------------------------------${NC}"
         echo -e "${WHITE}  0.${NC}  Exit"
@@ -559,11 +621,7 @@ menu() {
                 [ -n "$bale" ] && (grep -q "BALE_BOT_TOKEN=" "${INSTALL_DIR}/.env" && sed -i "s/BALE_BOT_TOKEN=.*/BALE_BOT_TOKEN=${bale}/g" "${INSTALL_DIR}/.env" || echo "BALE_BOT_TOKEN=${bale}" >> "${INSTALL_DIR}/.env")
                 echo -e "${GREEN}[✓] Bot tokens saved.${NC}"
                 ;;
-            14)
-                mkdir -p /root/accounting_windows_setup
-                cp -r "${INSTALL_DIR}/windows_setup/"* /root/accounting_windows_setup/ 2>/dev/null
-                echo -e "${GREEN}[✓] Windows setup files exported to /root/accounting_windows_setup${NC}"
-                ;;
+            14) build_windows_client_package ;;
             15) uninstall_app ;;
             0)  echo -e "\n${GREEN}Exiting.${NC}\n"; exit 0 ;;
             *)  echo -e "\n${RED}[!] Invalid option.${NC}" ;;
