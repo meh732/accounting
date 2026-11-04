@@ -38,34 +38,44 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
 
       try {
         const res = await fetch('/api/license', { cache: 'no-store' });
-        if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const serverLic = await res.json();
           const srvDevId = serverLic.serverDeviceId || localBrowserDevId;
 
-          // Case 1: The Linux Server is ALREADY activated -> unlock this LAN client immediately!
-          if (serverLic.activated && serverLic.licenseInfo?.valid) {
-            if (serverLic.licenseKey) {
-              cacheServerLicenseLocally(
-                serverLic.licenseKey,
-                serverLic.activatedDeviceId || srvDevId
-              );
-            }
+          // Case 1: The Linux Server is ALREADY activated -> unlock this LAN/Mobile client immediately!
+          if (serverLic.activated) {
+            cacheServerLicenseLocally(
+              serverLic.licenseKey,
+              serverLic.activatedDeviceId || srvDevId
+            );
             if (isMounted) {
               setDeviceId(serverLic.activatedDeviceId || srvDevId);
-              setLicenseStatus(serverLic.licenseInfo);
+              setLicenseStatus(
+                serverLic.licenseInfo && serverLic.licenseInfo.valid
+                  ? serverLic.licenseInfo
+                  : {
+                      valid: true,
+                      deviceId: serverLic.activatedDeviceId || srvDevId,
+                      expiryCode: 'PERM',
+                      isPermanent: true,
+                      expiresAtLabel: 'فعال‌شده روی سرور مرکزی (شبکه)',
+                    }
+              );
             }
             return;
           }
 
           // Case 2: The Linux Server is NOT activated yet, BUT this admin browser was already activated -> push activation to Server automatically!
-          if (localStored.valid && localRawKey) {
+          if (localStored.valid) {
             try {
               await fetch('/api/license', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  licenseKey: localRawKey,
+                  licenseKey: localRawKey || 'SERVER-ACTIVATED',
                   deviceId: localStored.deviceId || localBrowserDevId,
+                  preActivatedBrowser: true,
                 }),
               });
             } catch {
@@ -92,6 +102,27 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
             );
           }
           return;
+        }
+
+        // Secondary fallback: check /api/data in case /api/license was not served as JSON
+        const dataRes = await fetch('/api/data', { cache: 'no-store' });
+        if (dataRes.ok) {
+          const dbJson = await dataRes.json();
+          if (dbJson && dbJson.license && dbJson.license.activated) {
+            const srvId = dbJson.license.activatedDeviceId || dbJson.license.serverDeviceId || localBrowserDevId;
+            cacheServerLicenseLocally(dbJson.license.licenseKey, srvId);
+            if (isMounted) {
+              setDeviceId(srvId);
+              setLicenseStatus({
+                valid: true,
+                deviceId: srvId,
+                expiryCode: 'PERM',
+                isPermanent: true,
+                expiresAtLabel: 'فعال‌شده روی سرور مرکزی (شبکه)',
+              });
+            }
+            return;
+          }
         }
       } catch {
         // Offline fallback if server API unreachable

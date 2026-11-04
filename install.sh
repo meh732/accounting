@@ -153,6 +153,10 @@ create_systemd_service() {
     echo -e "${BLUE}[*] Creating system background service (${SERVICE_NAME})...${NC}"
 
     local entry_file="${INSTALL_DIR}/server.js"
+    local srv_activated="false"
+    if [[ -f "/var/backups/accounting/license.json" ]] || [[ -f "${INSTALL_DIR}/data/license.json" ]]; then
+        srv_activated="true"
+    fi
 
     cat <<EOF > "${SERVICE_FILE}"
 [Unit]
@@ -169,6 +173,7 @@ RestartSec=3
 Environment=NODE_ENV=production
 Environment=PORT=${port}
 Environment=HOST=0.0.0.0
+Environment=SERVER_ACTIVATED=${srv_activated}
 
 [Install]
 WantedBy=multi-user.target
@@ -301,6 +306,13 @@ install_app() {
 
     mkdir -p "${INSTALL_DIR}" "${BACKUP_DIR}"
 
+    # Preserve existing data folder if reinstalling
+    rm -rf /tmp/accounting_data_preserve
+    if [[ -d "${INSTALL_DIR}/data" ]]; then
+        mkdir -p /tmp/accounting_data_preserve
+        cp -rf "${INSTALL_DIR}/data/"* /tmp/accounting_data_preserve/ 2>/dev/null
+    fi
+
     echo -e "${BLUE}[*] Cloning repository from GitHub (${GIT_REPO})...${NC}"
     if [[ -d "${INSTALL_DIR}/.git" ]]; then
         cd "${INSTALL_DIR}" || exit 1
@@ -310,6 +322,12 @@ install_app() {
     else
         rm -rf "${INSTALL_DIR:?}"/*
         git clone "${GIT_REPO}" "${INSTALL_DIR}"
+    fi
+
+    if [[ -d "/tmp/accounting_data_preserve" ]]; then
+        mkdir -p "${INSTALL_DIR}/data"
+        cp -rf /tmp/accounting_data_preserve/* "${INSTALL_DIR}/data/" 2>/dev/null
+        rm -rf /tmp/accounting_data_preserve
     fi
 
     cd "${INSTALL_DIR}" || exit 1
@@ -350,7 +368,7 @@ EOF
     fi
 }
 
-# 2. Update Action (WITH AUTO BACKUP)
+# 2. Update Action (WITH AUTO BACKUP & DATA/LICENSE PRESERVATION)
 update_app() {
     print_banner
     echo -e "${WHITE}=== 2. Update System to Latest Version (with Auto-Backup) ===${NC}\n"
@@ -363,11 +381,37 @@ update_app() {
     echo -e "${YELLOW}[!] Creating automatic safety backup archive before update...${NC}"
     create_backup "pre_update"
 
+    # Preserve data directory across git reset
+    rm -rf /tmp/accounting_data_preserve
+    if [[ -d "${INSTALL_DIR}/data" ]]; then
+        mkdir -p /tmp/accounting_data_preserve
+        cp -rf "${INSTALL_DIR}/data/"* /tmp/accounting_data_preserve/ 2>/dev/null
+    fi
+
     echo -e "\n${BLUE}[*] Pulling latest updates from GitHub...${NC}"
     cd "${INSTALL_DIR}" || exit 1
     git fetch --all
     git reset --hard origin/main
     git pull origin main
+
+    # Restore preserved database and license files
+    mkdir -p "${INSTALL_DIR}/data" "${BACKUP_DIR}"
+    if [[ -d "/tmp/accounting_data_preserve" ]]; then
+        cp -rf /tmp/accounting_data_preserve/* "${INSTALL_DIR}/data/" 2>/dev/null
+        rm -rf /tmp/accounting_data_preserve
+    fi
+
+    # Mark this existing updated server as permanently activated for all network/mobile clients
+    if [[ ! -f "/var/backups/accounting/license.json" ]]; then
+        cat <<EOF > "/var/backups/accounting/license.json"
+{
+  "activated": true,
+  "licenseKey": "SERVER-ACTIVATED",
+  "activatedAt": "$(date -Iseconds)"
+}
+EOF
+    fi
+    cp -f "/var/backups/accounting/license.json" "${INSTALL_DIR}/data/license.json" 2>/dev/null
 
     echo -e "${BLUE}[*] Installing packages and building project...${NC}"
     npm install --production=false

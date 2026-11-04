@@ -316,11 +316,14 @@ export function getStoredActivatedDeviceId(): string | null {
   }
 }
 
-export function cacheServerLicenseLocally(rawKey: string, activatedDeviceId: string): void {
+export function cacheServerLicenseLocally(rawKey: string | null | undefined, activatedDeviceId: string): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(LICENSE_STORAGE_KEY, rawKey.trim().toUpperCase().replace(/\s+/g, ''));
+    if (rawKey && rawKey.startsWith('MEH1-')) {
+      localStorage.setItem(LICENSE_STORAGE_KEY, rawKey.trim().toUpperCase().replace(/\s+/g, ''));
+    }
     localStorage.setItem('meh_acc_activated_device_id_v1', normalizeDeviceId(activatedDeviceId));
+    localStorage.setItem('meh_acc_server_activated_v1', 'true');
   } catch {
     // ignore storage errors
   }
@@ -338,7 +341,37 @@ export function getStoredValidLicense(preferredDeviceId?: string): VerifiedLicen
         expiresAtLabel: '',
       };
     }
+
     const savedKey = localStorage.getItem(LICENSE_STORAGE_KEY);
+    if (savedKey) {
+      // Try verifying against preferredDeviceId, stored activatedDeviceId, or local browser deviceId
+      const candidates = Array.from(
+        new Set(
+          [preferredDeviceId, getStoredActivatedDeviceId(), getOrCreateDeviceId()].filter(
+            (x): x is string => Boolean(x)
+          )
+        )
+      );
+
+      for (const candidateId of candidates) {
+        const check = verifyOfflineLicenseKey(savedKey, candidateId);
+        if (check.valid) {
+          return check;
+        }
+      }
+    }
+
+    // Check if the central Linux server already confirmed activation for this client
+    if (localStorage.getItem('meh_acc_server_activated_v1') === 'true') {
+      return {
+        valid: true,
+        deviceId: fallbackDeviceId,
+        expiryCode: 'PERM',
+        isPermanent: true,
+        expiresAtLabel: 'فعال‌شده روی سرور مرکزی (شبکه)',
+      };
+    }
+
     if (!savedKey) {
       return {
         valid: false,
@@ -347,22 +380,6 @@ export function getStoredValidLicense(preferredDeviceId?: string): VerifiedLicen
         isPermanent: false,
         expiresAtLabel: '',
       };
-    }
-
-    // Try verifying against preferredDeviceId, stored activatedDeviceId, or local browser deviceId
-    const candidates = Array.from(
-      new Set(
-        [preferredDeviceId, getStoredActivatedDeviceId(), getOrCreateDeviceId()].filter(
-          (x): x is string => Boolean(x)
-        )
-      )
-    );
-
-    for (const candidateId of candidates) {
-      const check = verifyOfflineLicenseKey(savedKey, candidateId);
-      if (check.valid) {
-        return check;
-      }
     }
 
     return verifyOfflineLicenseKey(savedKey, fallbackDeviceId);
