@@ -10,6 +10,7 @@ import { useAccounting } from '../../context/AccountingContext';
 import {
   getCurrentShamsiDate,
   formatCurrency,
+  formatNumberWithCommas,
   parseNumberFromInput,
   numberToWordsPersian
 } from '../../utils/dateUtils';
@@ -983,10 +984,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={quickProductBuyPrice || ''}
+                    value={formatNumberWithCommas(quickProductBuyPrice, true)}
                     placeholder="0"
                     onChange={(e) => setQuickProductBuyPrice(parseNumberFromInput(e.target.value))}
-                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-left outline-hidden"
                   />
                 </div>
                 <div className="w-28">
@@ -995,10 +996,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={quickProductSalePrice || ''}
+                    value={formatNumberWithCommas(quickProductSalePrice, true)}
                     placeholder="0"
                     onChange={(e) => setQuickProductSalePrice(parseNumberFromInput(e.target.value))}
-                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-left outline-hidden"
                   />
                 </div>
                 <div className="w-24">
@@ -1007,7 +1008,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={quickProductInitialStock || ''}
+                    value={formatNumberWithCommas(quickProductInitialStock, true)}
                     placeholder="0"
                     onChange={(e) => setQuickProductInitialStock(parseNumberFromInput(e.target.value))}
                     className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-center font-bold outline-hidden"
@@ -1093,7 +1094,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           inputMode="numeric"
                           dir="ltr"
                           id={`input-item-${idx}-qty`}
-                          value={row.quantity}
+                          value={formatNumberWithCommas(row.quantity)}
                           onFocus={handleInputFocus}
                           onChange={(e) => updateItemField(idx, 'quantity', parseNumberFromInput(e.target.value))}
                           onKeyDown={(e) => handleKeyDown(e, `input-item-${idx}-price`)}
@@ -1107,7 +1108,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           inputMode="numeric"
                           dir="ltr"
                           id={`input-item-${idx}-price`}
-                          value={row.unitPrice}
+                          value={formatNumberWithCommas(row.unitPrice)}
                           onFocus={handleInputFocus}
                           onChange={(e) => updateItemField(idx, 'unitPrice', parseNumberFromInput(e.target.value))}
                           onKeyDown={(e) => handleKeyDown(e, `input-item-${idx}-discount`)}
@@ -1224,7 +1225,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                         inputMode="numeric"
                         dir="ltr"
                         id={`input-item-mobile-${idx}-qty`}
-                        value={row.quantity}
+                        value={formatNumberWithCommas(row.quantity)}
                         onFocus={handleInputFocus}
                         onChange={(e) => updateItemField(idx, 'quantity', parseNumberFromInput(e.target.value))}
                         onKeyDown={(e) => handleKeyDown(e, `input-item-mobile-${idx}-price`)}
@@ -1238,7 +1239,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                         inputMode="numeric"
                         dir="ltr"
                         id={`input-item-mobile-${idx}-price`}
-                        value={row.unitPrice}
+                        value={formatNumberWithCommas(row.unitPrice)}
                         onFocus={handleInputFocus}
                         onChange={(e) => updateItemField(idx, 'unitPrice', parseNumberFromInput(e.target.value))}
                         onKeyDown={(e) => handleKeyDown(e, undefined, true, idx)}
@@ -1286,10 +1287,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="flex justify-between items-center text-rose-600">
                 <span>تخفیف کلی پای فاکتور:</span>
                 <input
-                  type="number"
-                  value={invoiceDiscount}
+                  type="text"
+                  inputMode="numeric"
+                  dir="ltr"
+                  value={formatNumberWithCommas(invoiceDiscount)}
                   onFocus={handleInputFocus}
-                  onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setInvoiceDiscount(parseNumberFromInput(e.target.value))}
                   className="w-28 text-left bg-white border border-slate-200 rounded px-2 py-0.5 font-mono text-xs outline-hidden font-bold"
                 />
               </div>
@@ -1413,10 +1416,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      value={discountSettlement}
+                      type="text"
+                      inputMode="numeric"
+                      dir="ltr"
+                      value={formatNumberWithCommas(discountSettlement)}
                       onFocus={handleInputFocus}
-                      onChange={(e) => setDiscountSettlement(Math.max(0, parseFloat(e.target.value) || 0))}
+                      onChange={(e) => setDiscountSettlement(Math.max(0, parseNumberFromInput(e.target.value)))}
                       className="w-36 font-mono font-bold text-left bg-white border border-rose-300 focus:border-rose-500 rounded-lg px-2.5 py-1 text-xs outline-hidden text-rose-800"
                     />
                     <span className="text-slate-500 text-xs">{settings.currency}</span>
@@ -1480,12 +1485,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                         <label className="text-[10px] text-slate-500 font-bold block sm:hidden">مبلغ واریزی:</label>
                         <div className="relative">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
+                            dir="ltr"
                             placeholder="مبلغ واریزی..."
-                            value={b.amount}
+                            value={formatNumberWithCommas(b.amount)}
                             onFocus={handleInputFocus}
                             onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
+                              const val = parseNumberFromInput(e.target.value);
                               setBankList((prev) =>
                                 prev.map((item, i) => (i === idx ? { ...item, amount: val } : item))
                               );
@@ -1580,12 +1587,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </div>
                       <div className="sm:col-span-5">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           placeholder="مبلغ نقد..."
-                          value={c.amount}
+                          value={formatNumberWithCommas(c.amount)}
                           onFocus={handleInputFocus}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
+                            const val = parseNumberFromInput(e.target.value);
                             setCashList((prev) =>
                               prev.map((item, i) => (i === idx ? { ...item, amount: val } : item))
                             );
@@ -1693,12 +1702,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </div>
                       <div className="sm:col-span-2">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           placeholder="مبلغ چک..."
-                          value={ch.amount}
+                          value={formatNumberWithCommas(ch.amount)}
                           onFocus={handleInputFocus}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
+                            const val = parseNumberFromInput(e.target.value);
                             setChequeList((prev) =>
                               prev.map((item, i) => (i === idx ? { ...item, amount: val } : item))
                             );

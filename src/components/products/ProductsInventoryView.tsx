@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { Product } from '../../types/accounting';
-import { formatCurrency, getCurrentShamsiDate, parseNumberFromInput } from '../../utils/dateUtils';
+import {
+  formatCurrency,
+  getCurrentShamsiDate,
+  parseNumberFromInput,
+  formatNumberWithCommas,
+  numberToWordsPersian,
+} from '../../utils/dateUtils';
 import { calculateProductCardex } from '../../utils/financialCalculations';
 import { ProductCardexModal } from './ProductCardexModal';
 import {
@@ -550,12 +556,17 @@ export const ProductsInventoryView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={buyPrice}
+                    value={formatNumberWithCommas(buyPrice)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setBuyPrice(parseNumberFromInput(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-left"
                     required
                   />
+                  {buyPrice > 0 && (
+                    <div className="text-[10px] text-amber-800 mt-0.5 font-medium">
+                      {numberToWordsPersian(buyPrice)} {settings.currency}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">قیمت فروش ({settings.currency})</label>
@@ -563,12 +574,17 @@ export const ProductsInventoryView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={salePrice}
+                    value={formatNumberWithCommas(salePrice)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setSalePrice(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left font-bold"
                     required
                   />
+                  {salePrice > 0 && (
+                    <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">
+                      {numberToWordsPersian(salePrice)} {settings.currency}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -579,7 +595,7 @@ export const ProductsInventoryView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={stockQuantity}
+                    value={formatNumberWithCommas(stockQuantity)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setStockQuantity(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-center font-bold"
@@ -592,7 +608,7 @@ export const ProductsInventoryView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={reorderPoint}
+                    value={formatNumberWithCommas(reorderPoint)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setReorderPoint(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-center"
@@ -767,7 +783,7 @@ export const ProductsInventoryView: React.FC = () => {
                               type="text"
                               inputMode="numeric"
                               dir="ltr"
-                              value={counted}
+                              value={formatNumberWithCommas(counted)}
                               onFocus={(e) => e.target.select()}
                               onChange={(e) =>
                                 setCountedQuantities((prev) => ({

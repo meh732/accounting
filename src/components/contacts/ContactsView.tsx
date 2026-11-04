@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { Contact, ContactType } from '../../types/accounting';
 import { calculateContactCardex } from '../../utils/financialCalculations';
-import { formatCurrency, parseNumberFromInput } from '../../utils/dateUtils';
+import {
+  formatCurrency,
+  parseNumberFromInput,
+  formatNumberWithCommas,
+  numberToWordsPersian,
+} from '../../utils/dateUtils';
 import { ContactCardexModal } from './ContactCardexModal';
 import { ReceiptPaymentModal } from '../finance/ReceiptPaymentModal';
 import {
@@ -521,7 +526,7 @@ export const ContactsView: React.FC = () => {
                         type="text"
                         inputMode="numeric"
                         dir="ltr"
-                        value={claimedAmount}
+                        value={formatNumberWithCommas(claimedAmount)}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setClaimedAmount(parseNumberFromInput(e.target.value))}
                         className="w-full bg-white border border-indigo-300 rounded-lg p-2 font-mono font-bold text-left text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -759,11 +764,16 @@ export const ContactsView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={creditLimit}
+                    value={formatNumberWithCommas(creditLimit)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setCreditLimit(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
                   />
+                  {creditLimit > 0 && (
+                    <div className="text-[10px] text-slate-500 mt-0.5">
+                      {numberToWordsPersian(creditLimit)} {settings.currency}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">مانده اول دوره</label>
@@ -772,7 +782,7 @@ export const ContactsView: React.FC = () => {
                       type="text"
                       inputMode="numeric"
                       dir="ltr"
-                      value={initialBalance}
+                      value={formatNumberWithCommas(initialBalance)}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setInitialBalance(parseNumberFromInput(e.target.value))}
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-left"
@@ -786,6 +796,11 @@ export const ContactsView: React.FC = () => {
                       <option value="credit">بستانکار</option>
                     </select>
                   </div>
+                  {initialBalance > 0 && (
+                    <div className="text-[10px] text-indigo-700 mt-0.5 font-medium">
+                      {numberToWordsPersian(initialBalance)} {settings.currency}
+                    </div>
+                  )}
                 </div>
               </div>
 

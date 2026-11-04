@@ -61,10 +61,11 @@ export function formatCurrency(amount: number | undefined | null, currency: stri
   return `${formatted} ${currency}`;
 }
 
-export function formatNumberWithCommas(val: number | string): string {
+export function formatNumberWithCommas(val: number | string | undefined | null, emptyOnZero: boolean = false): string {
   if (val === '' || val === null || val === undefined) return '';
-  const num = typeof val === 'string' ? parseFloat(val.replace(/,/g, '')) : val;
+  const num = typeof val === 'number' ? val : parseNumberFromInput(val);
   if (isNaN(num)) return '';
+  if (num === 0) return emptyOnZero ? '' : '0';
   return num.toLocaleString('en-US');
 }
 

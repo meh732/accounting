@@ -2,7 +2,13 @@ import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { BankAccount, BankAccountType } from '../../types/accounting';
 import { calculateBankCardex } from '../../utils/financialCalculations';
-import { formatCurrency, getCurrentShamsiDate, parseNumberFromInput } from '../../utils/dateUtils';
+import {
+  formatCurrency,
+  getCurrentShamsiDate,
+  parseNumberFromInput,
+  formatNumberWithCommas,
+  numberToWordsPersian,
+} from '../../utils/dateUtils';
 import { BankCardexModal } from './BankCardexModal';
 import {
   Landmark,
@@ -552,11 +558,16 @@ export const BankAndCashView: React.FC = () => {
                   type="text"
                   inputMode="numeric"
                   dir="ltr"
-                  value={initialBalance}
+                  value={formatNumberWithCommas(initialBalance)}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setInitialBalance(parseNumberFromInput(e.target.value))}
                   className="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 font-mono font-bold text-left"
                 />
+                {initialBalance > 0 && (
+                  <div className="text-[10px] text-emerald-700 mt-1 font-medium">
+                    معادل: {numberToWordsPersian(initialBalance)} {settings.currency}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
@@ -643,7 +654,7 @@ export const BankAndCashView: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     dir="ltr"
-                    value={bankStatementBalance}
+                    value={formatNumberWithCommas(bankStatementBalance)}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setBankStatementBalance(parseNumberFromInput(e.target.value))}
                     className="w-full bg-white border border-indigo-400 rounded-lg p-2 font-mono font-bold text-left text-indigo-800"

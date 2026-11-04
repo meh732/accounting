@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { Expense } from '../../types/accounting';
 import { useAccounting } from '../../context/AccountingContext';
-import { getCurrentShamsiDate, formatCurrency } from '../../utils/dateUtils';
+import {
+  getCurrentShamsiDate,
+  formatCurrency,
+  formatNumberWithCommas,
+  parseNumberFromInput,
+  numberToWordsPersian,
+} from '../../utils/dateUtils';
 import { X, DollarSign, Landmark, Plus, Trash2, Tag, Calendar } from 'lucide-react';
 
 interface ExpenseModalProps {
@@ -117,13 +123,21 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ expenseToEdit, onClo
             <div>
               <label className="block font-semibold text-slate-700 mb-1">مبلغ هزینه ({settings.currency})</label>
               <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                type="text"
+                inputMode="numeric"
+                dir="ltr"
+                value={formatNumberWithCommas(amount, true)}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setAmount(parseNumberFromInput(e.target.value))}
                 placeholder="0"
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-rose-700 text-left"
                 required
               />
+              {amount > 0 && (
+                <div className="text-[10px] text-rose-700 mt-0.5 font-medium">
+                  {numberToWordsPersian(amount)} {settings.currency}
+                </div>
+              )}
             </div>
           </div>
 

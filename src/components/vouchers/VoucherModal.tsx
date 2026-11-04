@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { JournalVoucher, VoucherItem, VoucherStatus } from '../../types/accounting';
 import { useAccounting } from '../../context/AccountingContext';
-import { getCurrentShamsiDate, formatCurrency, numberToWordsPersian } from '../../utils/dateUtils';
+import {
+  getCurrentShamsiDate,
+  formatCurrency,
+  formatNumberWithCommas,
+  parseNumberFromInput,
+  numberToWordsPersian,
+} from '../../utils/dateUtils';
 import { X, Plus, Trash2, FileSpreadsheet, CheckCircle2, AlertCircle } from 'lucide-react';
 import { SearchableAccountSelect } from '../common/SearchableAccountSelect';
 
@@ -470,13 +476,15 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ voucherToEdit, onClo
                       </td>
                       <td className="py-2 px-3">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           id={`voucher-row-${idx}-debit`}
-                          value={row.debit === 0 ? '' : row.debit}
+                          value={formatNumberWithCommas(row.debit, true)}
                           placeholder="0"
                           onFocus={handleInputFocus}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
+                            const val = parseNumberFromInput(e.target.value);
                             updateItemField(idx, 'debit', val);
                             if (val > 0) updateItemField(idx, 'credit', 0);
                           }}
@@ -497,13 +505,15 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ voucherToEdit, onClo
                       </td>
                       <td className="py-2 px-3">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           id={`voucher-row-${idx}-credit`}
-                          value={row.credit === 0 ? '' : row.credit}
+                          value={formatNumberWithCommas(row.credit, true)}
                           placeholder="0"
                           onFocus={handleInputFocus}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
+                            const val = parseNumberFromInput(e.target.value);
                             updateItemField(idx, 'credit', val);
                             if (val > 0) updateItemField(idx, 'debit', 0);
                           }}
