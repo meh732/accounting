@@ -4,6 +4,7 @@ import { Contact, ContactType } from '../../types/accounting';
 import { calculateContactCardex } from '../../utils/financialCalculations';
 import { formatCurrency } from '../../utils/dateUtils';
 import { ContactCardexModal } from './ContactCardexModal';
+import { ReceiptPaymentModal } from '../finance/ReceiptPaymentModal';
 import {
   Users,
   Plus,
@@ -15,16 +16,32 @@ import {
   X,
   CreditCard,
   Building,
-  UserCheck
+  UserCheck,
+  ArrowDownLeft,
+  ArrowUpRight
 } from 'lucide-react';
 
 export const ContactsView: React.FC = () => {
-  const { contacts, addContact, updateContact, deleteContact, invoices, vouchers, expenses, settings } =
-    useAccounting();
+  const {
+    contacts,
+    addContact,
+    updateContact,
+    deleteContact,
+    invoices,
+    vouchers,
+    expenses,
+    financialTransactions,
+    cheques,
+    settings,
+  } = useAccounting();
 
   const [activeTypeTab, setActiveTypeTab] = useState<ContactType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContactForCardex, setSelectedContactForCardex] = useState<Contact | null>(null);
+  const [paymentModalConfig, setPaymentModalConfig] = useState<{
+    type: 'receipt' | 'payment';
+    contactId: string;
+  } | null>(null);
 
   // Modal State for Add / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,7 +51,7 @@ export const ContactsView: React.FC = () => {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [type, setType] = useState<ContactType>('customer');
+  const [type, setType] = useState<ContactType>('both');
   const [phone, setPhone] = useState('');
   const [mobile, setMobile] = useState('');
   const [nationalCode, setNationalCode] = useState('');
@@ -49,7 +66,7 @@ export const ContactsView: React.FC = () => {
     setCode(`C-${100 + contacts.length + 1}`);
     setName('');
     setCompanyName('');
-    setType('customer');
+    setType('both');
     setPhone('');
     setMobile('');
     setNationalCode('');
@@ -222,7 +239,9 @@ export const ContactsView: React.FC = () => {
                   c,
                   invoices,
                   vouchers,
-                  expenses
+                  expenses,
+                  financialTransactions,
+                  cheques
                 );
 
                 const typeBadge =
@@ -268,19 +287,35 @@ export const ContactsView: React.FC = () => {
                         <span className="text-slate-400 text-[11px]">بی‌حساب (۰)</span>
                       ) : (
                         <span className={finalBalanceType === 'بدهکار' ? 'text-rose-600' : 'text-emerald-600'}>
-                          {finalBalance.toLocaleString()} ({finalBalanceType})
+                          {finalBalance.toLocaleString()} {settings.currency} ({finalBalanceType})
                         </span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => setSelectedContactForCardex(c)}
-                          title="مشاهده کاردکس ریز حساب"
+                          title="مشاهده صورتحساب و کاردکس ریز حساب"
                           className="flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition"
                         >
                           <FileText className="w-3.5 h-3.5" />
-                          <span>کاردکس</span>
+                          <span>صورتحساب</span>
+                        </button>
+                        <button
+                          onClick={() => setPaymentModalConfig({ type: 'receipt', contactId: c.id })}
+                          title="ثبت دریافت وجه از این شخص"
+                          className="flex items-center gap-0.5 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-bold transition"
+                        >
+                          <ArrowDownLeft className="w-3.5 h-3.5" />
+                          <span>دریافت</span>
+                        </button>
+                        <button
+                          onClick={() => setPaymentModalConfig({ type: 'payment', contactId: c.id })}
+                          title="ثبت پرداخت وجه به این شخص"
+                          className="flex items-center gap-0.5 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold transition"
+                        >
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                          <span>پرداخت</span>
                         </button>
                         <button
                           onClick={() => openEditModal(c)}
@@ -481,6 +516,15 @@ export const ContactsView: React.FC = () => {
         <ContactCardexModal
           contact={selectedContactForCardex}
           onClose={() => setSelectedContactForCardex(null)}
+        />
+      )}
+
+      {/* Quick Receipt / Payment Modal */}
+      {paymentModalConfig && (
+        <ReceiptPaymentModal
+          type={paymentModalConfig.type}
+          defaultContactId={paymentModalConfig.contactId}
+          onClose={() => setPaymentModalConfig(null)}
         />
       )}
     </div>

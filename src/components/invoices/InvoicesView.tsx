@@ -312,6 +312,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ initialFilter = 'all
             setShowCreateModal(false);
             setSelectedInvoiceForEdit(null);
           }}
+          onSavedAndPrint={(inv) => {
+            setSelectedInvoiceForPrint(inv);
+          }}
         />
       )}
 

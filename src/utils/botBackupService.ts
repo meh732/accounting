@@ -24,7 +24,7 @@ export interface BotSendResult {
 }
 
 /**
- * Send backup file/document to Telegram Bot API
+ * Send backup file/document to Telegram Bot API (via server proxy first, then direct fallback)
  */
 export async function sendBackupToTelegram(
   botToken: string,
@@ -36,11 +36,39 @@ export async function sendBackupToTelegram(
     return { success: false, message: 'توکن ربات یا شناسه چت تلگرام خالی است.' };
   }
 
+  const cleanToken = botToken.trim();
+  const cleanChatId = chatId.trim();
+
+  // 1. Try server-side proxy to avoid browser CORS blocks
   try {
-    const cleanToken = botToken.trim();
-    const cleanChatId = chatId.trim();
+    const proxyRes = await fetch('/api/bot-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'telegram',
+        botToken: cleanToken,
+        chatId: cleanChatId,
+        backupJSONString,
+        companyName,
+      }),
+    });
+    if (proxyRes.ok) {
+      const proxyData = await proxyRes.json();
+      if (proxyData.ok) {
+        return { success: true, message: 'فایل پشتیبان کامل با موفقیت به تلگرام ارسال شد.' };
+      }
+      if (proxyData.description) {
+        return { success: false, message: `خطای تلگرام: ${proxyData.description}` };
+      }
+    }
+  } catch {
+    // Fallback to direct browser fetch below
+  }
+
+  // 2. Direct browser fallback
+  try {
     const fileName = `backup_${companyName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
-    const caption = `🛡️ **پشتیبان خودکار سیستم حسابداری مه**\n🏢 شرکت: ${companyName}\n📅 تاریخ: ${new Date().toLocaleDateString('fa-IR')}\n⏰ ساعت: ${new Date().toLocaleTimeString('fa-IR')}\n💾 حجم فایل: ${(backupJSONString.length / 1024).toFixed(1)} KB`;
+    const caption = `🛡️ پشتیبان خودکار سیستم حسابداری مه\n🏢 شرکت: ${companyName}\n📅 تاریخ: ${new Date().toLocaleDateString('fa-IR')}\n⏰ ساعت: ${new Date().toLocaleTimeString('fa-IR')}\n💾 حجم فایل: ${(backupJSONString.length / 1024).toFixed(1)} KB`;
 
     const blob = new Blob([backupJSONString], { type: 'application/json' });
     const formData = new FormData();
@@ -65,7 +93,7 @@ export async function sendBackupToTelegram(
 }
 
 /**
- * Send backup file/document to Bale Bot API (https://tapi.bale.ai)
+ * Send backup file/document to Bale Bot API (https://tapi.bale.ai) via server proxy first, then direct fallback
  */
 export async function sendBackupToBale(
   botToken: string,
@@ -77,9 +105,37 @@ export async function sendBackupToBale(
     return { success: false, message: 'توکن ربات یا شناسه چت بله خالی است.' };
   }
 
+  const cleanToken = botToken.trim();
+  const cleanChatId = chatId.trim();
+
+  // 1. Try server-side proxy to avoid browser CORS blocks
   try {
-    const cleanToken = botToken.trim();
-    const cleanChatId = chatId.trim();
+    const proxyRes = await fetch('/api/bot-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'bale',
+        botToken: cleanToken,
+        chatId: cleanChatId,
+        backupJSONString,
+        companyName,
+      }),
+    });
+    if (proxyRes.ok) {
+      const proxyData = await proxyRes.json();
+      if (proxyData.ok) {
+        return { success: true, message: 'فایل پشتیبان کامل با موفقیت به پیام‌رسان بله ارسال شد.' };
+      }
+      if (proxyData.description) {
+        return { success: false, message: `خطای بله: ${proxyData.description}` };
+      }
+    }
+  } catch {
+    // Fallback to direct browser fetch below
+  }
+
+  // 2. Direct browser fallback
+  try {
     const fileName = `backup_${companyName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
     const caption = `🛡️ پشتیبان خودکار سیستم حسابداری مه\n🏢 شرکت: ${companyName}\n📅 تاریخ: ${new Date().toLocaleDateString('fa-IR')}\n⏰ ساعت: ${new Date().toLocaleTimeString('fa-IR')}\n💾 حجم فایل: ${(backupJSONString.length / 1024).toFixed(1)} KB`;
 

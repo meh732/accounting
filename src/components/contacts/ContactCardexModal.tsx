@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Contact } from '../../types/accounting';
 import { useAccounting } from '../../context/AccountingContext';
 import { calculateContactCardex } from '../../utils/financialCalculations';
 import { formatCurrency, numberToWordsPersian } from '../../utils/dateUtils';
-import { Printer, X, User, Phone, MapPin, Building2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ReceiptPaymentModal } from '../finance/ReceiptPaymentModal';
+import { Printer, X, User, Building2, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 interface ContactCardexModalProps {
   contact: Contact;
@@ -11,9 +12,17 @@ interface ContactCardexModalProps {
 }
 
 export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact, onClose }) => {
-  const { invoices, vouchers, expenses, settings } = useAccounting();
+  const { invoices, vouchers, expenses, financialTransactions, cheques, settings } = useAccounting();
+  const [txModalType, setTxModalType] = useState<'receipt' | 'payment' | null>(null);
 
-  const cardex = calculateContactCardex(contact, invoices, vouchers, expenses);
+  const cardex = calculateContactCardex(
+    contact,
+    invoices,
+    vouchers,
+    expenses,
+    financialTransactions,
+    cheques
+  );
 
   const handlePrint = () => {
     window.print();
@@ -23,7 +32,7 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200">
         {/* Top Controls */}
-        <div className="no-print p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-2xl">
+        <div className="no-print p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-t-2xl">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
               <User className="w-4 h-4" />
@@ -33,11 +42,25 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
                 کاردکس ریز حساب و صورتحساب: {contact.name} ({contact.code})
               </h3>
               <span className="text-[11px] text-slate-500">
-                شامل کلیه فاکتورهای فروش، خرید، واریزی‌ها، چک‌ها و اسناد دستی
+                شامل کلیه فاکتورهای فروش، خرید، دریافت‌ها، پرداخت‌ها، چک‌ها و اسناد دستی
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setTxModalType('receipt')}
+              className="flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5" />
+              <span>ثبت دریافت از این شخص</span>
+            </button>
+            <button
+              onClick={() => setTxModalType('payment')}
+              className="flex items-center gap-1 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>ثبت پرداخت به این شخص</span>
+            </button>
             <button
               onClick={handlePrint}
               id="btn-print-cardex"
@@ -195,6 +218,14 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
             </div>
           </div>
         </div>
+
+        {txModalType && (
+          <ReceiptPaymentModal
+            type={txModalType}
+            defaultContactId={contact.id}
+            onClose={() => setTxModalType(null)}
+          />
+        )}
       </div>
     </div>
   );

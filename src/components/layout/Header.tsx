@@ -192,11 +192,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             id="btn-toggle-currency"
             onClick={toggleCurrency}
-            title="تغییر واحد پول پیش‌فرض سیستم"
-            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200"
+            title="تغییر سریع واحد پول کل نرم‌افزار (تومان ⇄ ریال)"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition border border-amber-200 cursor-pointer"
           >
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span>واحد: {settings.currency}</span>
+            <Coins className="w-3.5 h-3.5 text-amber-600" />
+            <span>{settings.currency}</span>
           </button>
 
           {/* Central Server Real-time Sync Status */}

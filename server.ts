@@ -382,6 +382,51 @@ async function startServer() {
     }
   });
 
+  // 6.5. Server-side Bot Backup Proxy (Telegram & Bale) to bypass browser CORS
+  app.post('/api/bot-backup', async (req, res) => {
+    try {
+      const { platform, botToken, chatId, backupJSONString, companyName } = req.body || {};
+      if (!platform || !botToken || !chatId || !backupJSONString) {
+        res.status(400).json({ ok: false, description: 'پارامترهای ارسالی ناقص است.' });
+        return;
+      }
+
+      const cleanToken = String(botToken).trim();
+      const cleanChatId = String(chatId).trim();
+      const safeCompany = String(companyName || 'Hesabdari_Meh').replace(/\s+/g, '_');
+      const fileName = `backup_${safeCompany}_${new Date().toISOString().slice(0, 10)}.json`;
+      const caption =
+        platform === 'telegram'
+          ? `🛡️ پشتیبان کامل خودکار سیستم حسابداری مه\n🏢 فروشگاه/شرکت: ${companyName || 'حسابداری مه'}\n📅 تاریخ: ${new Date().toLocaleDateString('fa-IR')}\n⏰ ساعت: ${new Date().toLocaleTimeString('fa-IR')}\n💾 حجم فایل: ${(String(backupJSONString).length / 1024).toFixed(1)} KB`
+          : `🛡️ پشتیبان کامل خودکار سیستم حسابداری مه\n🏢 فروشگاه/شرکت: ${companyName || 'حسابداری مه'}\n📅 تاریخ: ${new Date().toLocaleDateString('fa-IR')}\n⏰ ساعت: ${new Date().toLocaleTimeString('fa-IR')}\n💾 حجم فایل: ${(String(backupJSONString).length / 1024).toFixed(1)} KB`;
+
+      const apiUrl =
+        platform === 'bale'
+          ? `https://tapi.bale.ai/bot${cleanToken}/sendDocument`
+          : `https://api.telegram.org/bot${cleanToken}/sendDocument`;
+
+      const formData = new FormData();
+      formData.append('chat_id', cleanChatId);
+      formData.append('caption', caption);
+      const blob = new Blob([String(backupJSONString)], { type: 'application/json' });
+      formData.append('document', blob, fileName);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error('[Server Bot Backup] Error:', err);
+      res.status(500).json({
+        ok: false,
+        description: err?.message || 'خطا در ارتباط سرور با پیام‌رسان',
+      });
+    }
+  });
+
   // Helper function to add folders to zip
   function addFolderToZip(zip: JSZip, folderPath: string) {
     if (!fs.existsSync(folderPath)) return;
@@ -595,6 +640,24 @@ ${serverUrl}
   app.get('/download/server', handleServerBundleDownload);
   app.get('/download/server.zip', handleServerBundleDownload);
   app.get('/api/download/server', handleServerBundleDownload);
+
+  // Standalone Offline HTML Keygen download handler (for owner)
+  const handleKeygenDownload = (req: express.Request, res: express.Response) => {
+    try {
+      const keygenPath = path.join(process.cwd(), 'public', 'Meh-Offline-Keygen.html');
+      if (fs.existsSync(keygenPath)) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="Meh-Offline-Keygen.html"');
+        return res.sendFile(keygenPath);
+      }
+      res.status(404).send('Keygen HTML file not found.');
+    } catch (err) {
+      res.status(500).send('Failed to serve keygen HTML');
+    }
+  };
+
+  app.get('/download/keygen', handleKeygenDownload);
+  app.get('/api/download/keygen', handleKeygenDownload);
 
   // Serve Frontend via Vite in development, or Static Files in production
   if (process.env.NODE_ENV !== 'production') {

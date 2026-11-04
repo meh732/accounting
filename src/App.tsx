@@ -16,10 +16,13 @@ import { FinancialReportsView } from './components/reports/FinancialReportsView'
 import { SettingsView } from './components/settings/SettingsView';
 
 import { InvoiceModal } from './components/invoices/InvoiceModal';
+import { InvoicePrintModal } from './components/invoices/InvoicePrintModal';
 import { VoucherModal } from './components/vouchers/VoucherModal';
 import { ExpenseModal } from './components/expenses/ExpenseModal';
 import { BackupManagerModal } from './components/backup/BackupManagerModal';
 import { InitialFinancialYearModal } from './components/settings/InitialFinancialYearModal';
+import { OfflineActivationGate } from './components/common/OfflineActivationGate';
+import { Invoice } from './types/accounting';
 
 import {
   LayoutDashboard,
@@ -40,6 +43,7 @@ const AccountingApp: React.FC = () => {
 
   // Quick action modals
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [quickPrintInvoice, setQuickPrintInvoice] = useState<Invoice | null>(null);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -161,6 +165,14 @@ const AccountingApp: React.FC = () => {
         <InvoiceModal
           initialType="sales"
           onClose={() => setIsInvoiceModalOpen(false)}
+          onSavedAndPrint={(inv) => setQuickPrintInvoice(inv)}
+        />
+      )}
+
+      {quickPrintInvoice && (
+        <InvoicePrintModal
+          invoice={quickPrintInvoice}
+          onClose={() => setQuickPrintInvoice(null)}
         />
       )}
 
@@ -192,8 +204,10 @@ const AccountingApp: React.FC = () => {
 
 export default function App() {
   return (
-    <AccountingProvider>
-      <AccountingApp />
-    </AccountingProvider>
+    <OfflineActivationGate>
+      <AccountingProvider>
+        <AccountingApp />
+      </AccountingProvider>
+    </OfflineActivationGate>
   );
 }

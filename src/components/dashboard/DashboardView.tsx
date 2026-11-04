@@ -45,6 +45,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     contacts,
     vouchers,
     cheques,
+    financialTransactions,
     settings
   } = useAccounting();
 
@@ -52,7 +53,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // 1. Total Bank & Cash Balances
   const totalCashAndBank = bankAccounts.reduce((sum, b) => {
-    const { currentBalance } = calculateBankCardex(b, invoices, expenses, vouchers);
+    const { currentBalance } = calculateBankCardex(
+      b,
+      invoices,
+      expenses,
+      vouchers,
+      financialTransactions,
+      cheques
+    );
     return sum + currentBalance;
   }, 0);
 
@@ -61,7 +69,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   let totalPayables = 0;    // بدهی به تامین‌کنندگان
 
   contacts.forEach((c) => {
-    const { finalBalance, finalBalanceType } = calculateContactCardex(c, invoices, vouchers, expenses);
+    const { finalBalance, finalBalanceType } = calculateContactCardex(
+      c,
+      invoices,
+      vouchers,
+      expenses,
+      financialTransactions,
+      cheques
+    );
     if (finalBalanceType === 'بدهکار') {
       totalReceivables += finalBalance;
     } else if (finalBalanceType === 'بستانکار') {

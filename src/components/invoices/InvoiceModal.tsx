@@ -36,7 +36,9 @@ import {
   CheckCircle2,
   AlertCircle,
   HelpCircle,
-  Tag
+  Tag,
+  PackagePlus,
+  Printer
 } from 'lucide-react';
 import { SearchableProductSelect } from '../common/SearchableProductSelect';
 
@@ -44,22 +46,26 @@ interface InvoiceModalProps {
   initialType?: InvoiceType;
   invoiceToEdit?: Invoice | null;
   onClose: () => void;
+  onSavedAndPrint?: (invoice: Invoice) => void;
 }
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   initialType = 'sales',
   invoiceToEdit,
   onClose,
+  onSavedAndPrint,
 }) => {
   const {
     contacts,
     products,
+    productCategories,
     bankAccounts,
     settings,
     addInvoice,
     updateInvoice,
     invoices,
-    addContact
+    addContact,
+    addProduct
   } = useAccounting();
 
   // Mobile active tab view
@@ -82,6 +88,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [showQuickContact, setShowQuickContact] = useState(false);
   const [quickContactName, setQuickContactName] = useState('');
   const [quickContactPhone, setQuickContactPhone] = useState('');
+
+  // Quick product inline add state
+  const [showQuickProduct, setShowQuickProduct] = useState(false);
+  const [quickProductTitle, setQuickProductTitle] = useState('');
+  const [quickProductUnit, setQuickProductUnit] = useState('عدد');
+  const [quickProductBuyPrice, setQuickProductBuyPrice] = useState<number>(0);
+  const [quickProductSalePrice, setQuickProductSalePrice] = useState<number>(0);
 
   // Keyboard shortcut hints toggle
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
@@ -122,11 +135,18 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     invoiceToEdit?.settlement?.discountAmount || 0
   );
 
-  // Filter contacts based on invoice type
+  // Show all contacts, sorted with matching type first so any custom contact can be selected for Purchase or Sales
   const isPurchaseMode = invoiceType === 'purchase' || invoiceType === 'purchase_return';
-  const availableContacts = contacts.filter((c) => {
-    if (isPurchaseMode) return c.type === 'supplier' || c.type === 'both';
-    return c.type === 'customer' || c.type === 'both' || c.type === 'other';
+  const availableContacts = [...contacts].sort((a, b) => {
+    const aPreferred = isPurchaseMode
+      ? a.type === 'supplier' || a.type === 'both'
+      : a.type === 'customer' || a.type === 'both';
+    const bPreferred = isPurchaseMode
+      ? b.type === 'supplier' || b.type === 'both'
+      : b.type === 'customer' || b.type === 'both';
+    if (aPreferred && !bPreferred) return -1;
+    if (!aPreferred && bPreferred) return 1;
+    return 0;
   });
 
   // Auto select first contact if none selected
@@ -506,7 +526,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       name: quickContactName.trim(),
       phone: quickContactPhone.trim(),
       mobile: quickContactPhone.trim(),
-      type: isPurchaseMode ? 'supplier' : 'customer',
+      type: 'both',
       creditLimit: 100000000,
       initialBalance: 0,
       initialBalanceType: 'debit',
@@ -517,24 +537,69 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setShowQuickContact(false);
   };
 
-  // Save invoice handler
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Inline Product Add
+  const handleAddQuickProduct = () => {
+    if (!quickProductTitle.trim()) return;
+    const defaultCat = productCategories[0];
+    const newPrd = addProduct({
+      title: quickProductTitle.trim(),
+      categoryId: defaultCat?.id || 'cat-1',
+      categoryTitle: defaultCat?.title || 'کالاهای عمومی',
+      unit: quickProductUnit.trim() || 'عدد',
+      buyPrice: quickProductBuyPrice || 0,
+      salePrice: quickProductSalePrice || quickProductBuyPrice || 0,
+      stockQuantity: 0,
+      reorderPoint: 5,
+    });
 
+    // Put into first empty row or add a new row
+    const emptyIdx = items.findIndex((it) => !it.productId && !it.productTitle.trim());
+    if (emptyIdx !== -1) {
+      updateItemField(emptyIdx, 'productId', newPrd.id);
+    } else {
+      const price = isPurchaseMode ? newPrd.buyPrice : newPrd.salePrice;
+      const taxPct = settings.enableTax !== false ? (settings.defaultTaxRate ?? 10) : 0;
+      const taxAmt = Math.round((price * taxPct) / 100);
+      setItems((prev) => [
+        ...prev,
+        {
+          id: `item-${Date.now()}-${prev.length + 1}`,
+          productId: newPrd.id,
+          productTitle: newPrd.title,
+          unit: newPrd.unit || 'عدد',
+          quantity: 1,
+          unitPrice: price,
+          discountPercent: 0,
+          discountAmount: 0,
+          taxPercent: taxPct,
+          taxAmount: taxAmt,
+          totalPrice: price + taxAmt,
+        },
+      ]);
+    }
+
+    setQuickProductTitle('');
+    setQuickProductBuyPrice(0);
+    setQuickProductSalePrice(0);
+    setShowQuickProduct(false);
+  };
+
+  // Save invoice handler
+  const saveInvoiceProcess = (shouldPrint: boolean) => {
     if (!selectedContactId) {
       alert('لطفاً طرف حساب فاکتور را مشخص فرمایید.');
       setMobileTab('info');
       return;
     }
 
-    const validItems = items.filter((it) => (it.productTitle.trim() !== '' || it.productId !== '') && it.quantity > 0);
-    if (validItems.length === 0) {
+    const rawValidItems = items.filter((it) => (it.productTitle.trim() !== '' || it.productId !== '') && it.quantity > 0);
+    if (rawValidItems.length === 0) {
       alert('حداقل یک سطر کالا با تعداد معتبر در فاکتور الزامی است.');
       setMobileTab('items');
       return;
     }
 
-    // Settlement Total Validation (جمع نسیه + تخفیف + بانک‌ها + نقد + چک با جمع کل فاکتور حتماً باید همخوانی داشته باشد)
+    // Settlement Total Validation
     if (isOverpaid) {
       alert(
         `خطای تراز تسویه فاکتور: مجموع مبالغ تسویه شده (نقد + بانک + چک + تخفیف تسویه = ${formatCurrency(totalPaid, settings.currency)}) مبلغ ${formatCurrency(overpaidAmount, settings.currency)} بیشتر از جمع کل فاکتور (${formatCurrency(grandTotal, settings.currency)}) است.\n\nلطفاً مبالغ تسویه یا تخفیف را اصلاح نمایید یا از دکمه «تراز خودکار تسویه» استفاده فرمایید.`
@@ -542,6 +607,29 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       setMobileTab('settlement');
       return;
     }
+
+    // Ensure any custom typed product without productId is registered in inventory so stock & cardex work
+    const defaultCat = productCategories[0];
+    const validItems: InvoiceItem[] = rawValidItems.map((it) => {
+      if (!it.productId && it.productTitle.trim()) {
+        const existingPrd = products.find((p) => p.title.trim() === it.productTitle.trim());
+        if (existingPrd) {
+          return { ...it, productId: existingPrd.id };
+        }
+        const createdPrd = addProduct({
+          title: it.productTitle.trim(),
+          categoryId: defaultCat?.id || 'cat-1',
+          categoryTitle: defaultCat?.title || 'کالاهای عمومی',
+          unit: it.unit || 'عدد',
+          buyPrice: isPurchaseMode ? it.unitPrice : Math.round(it.unitPrice * 0.85),
+          salePrice: !isPurchaseMode ? it.unitPrice : Math.round(it.unitPrice * 1.2),
+          stockQuantity: 0,
+          reorderPoint: 5,
+        });
+        return { ...it, productId: createdPrd.id };
+      }
+      return it;
+    });
 
     const contact = contacts.find((c) => c.id === selectedContactId);
 
@@ -553,8 +641,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       discountAmount: discountSettlement,
     };
 
+    let savedInvoice: Invoice;
     if (invoiceToEdit) {
-      updateInvoice(invoiceToEdit.id, {
+      const updatedPayload = {
         type: invoiceType,
         invoiceNumber,
         date,
@@ -572,9 +661,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         grandTotal,
         settlement,
         notes,
-      });
+      };
+      updateInvoice(invoiceToEdit.id, updatedPayload);
+      savedInvoice = { ...invoiceToEdit, ...updatedPayload };
     } else {
-      addInvoice({
+      savedInvoice = addInvoice({
         type: invoiceType,
         invoiceNumber,
         date,
@@ -596,6 +687,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
 
     onClose();
+    if (shouldPrint && onSavedAndPrint) {
+      onSavedAndPrint(savedInvoice);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveInvoiceProcess(false);
   };
 
   return (
@@ -824,24 +923,86 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
           {/* SECTION 2: Items Table / Rapid Keyboard Entry */}
           <div className={`${mobileTab === 'items' ? 'block' : 'hidden sm:block'} space-y-2`}>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                 <ShoppingCart className="w-4 h-4 text-indigo-600" />
                 <span>اقلام و کالاهای فاکتور</span>
                 <span className="text-[10px] text-slate-500 font-normal hidden sm:inline">
-                  (با زدن Enter روی هر فیلد، خودکار به فیلد و سطر بعدی می‌رود)
+                  (می‌توانید کالای جدید تعریف کنید یا مستقیماً نام کالا را تایپ نمایید)
                 </span>
               </h4>
-              <button
-                type="button"
-                onClick={() => addItemRow(true)}
-                id="btn-add-item-row"
-                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>افزودن ردیف کالا</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickProduct(!showQuickProduct)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  <PackagePlus className="w-3.5 h-3.5 text-amber-600" />
+                  <span>+ تعریف کالای جدید در انبار</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addItemRow(true)}
+                  id="btn-add-item-row"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>افزودن ردیف کالا</span>
+                </button>
+              </div>
             </div>
+
+            {/* Quick Product Inline Drawer */}
+            {showQuickProduct && (
+              <div className="bg-amber-50/90 p-3 rounded-xl border border-amber-300 flex flex-wrap items-end gap-2.5 text-xs animate-in fade-in">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">نام کالای جدید:</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: هارد اکسترنال ۱ ترابایت..."
+                    value={quickProductTitle}
+                    onChange={(e) => setQuickProductTitle(e.target.value)}
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs outline-hidden focus:border-amber-600"
+                  />
+                </div>
+                <div className="w-20">
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">واحد:</label>
+                  <input
+                    type="text"
+                    value={quickProductUnit}
+                    onChange={(e) => setQuickProductUnit(e.target.value)}
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs text-center outline-hidden"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">قیمت خرید ({settings.currency}):</label>
+                  <input
+                    type="number"
+                    value={quickProductBuyPrice || ''}
+                    placeholder="0"
+                    onChange={(e) => setQuickProductBuyPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">قیمت فروش ({settings.currency}):</label>
+                  <input
+                    type="number"
+                    value={quickProductSalePrice || ''}
+                    placeholder="0"
+                    onChange={(e) => setQuickProductSalePrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddQuickProduct}
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  ثبت در انبار و افزودن به فاکتور
+                </button>
+              </div>
+            )}
 
             {/* Desktop Table View */}
             <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-xs hidden md:block min-h-[180px]">
@@ -1618,7 +1779,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -1626,11 +1787,27 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               >
                 انصراف (Esc)
               </button>
+              {onSavedAndPrint && (
+                <button
+                  type="button"
+                  id="btn-submit-and-print-invoice"
+                  disabled={isOverpaid}
+                  onClick={() => saveInvoiceProcess(true)}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl shadow-md transition ${
+                    isOverpaid
+                      ? 'bg-slate-400 cursor-not-allowed opacity-70'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25'
+                  }`}
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>ثبت و چاپ فوری فاکتور</span>
+                </button>
+              )}
               <button
                 type="submit"
                 id="btn-submit-invoice"
                 disabled={isOverpaid}
-                className={`flex items-center gap-1.5 px-5 sm:px-6 py-2 text-xs font-bold text-white rounded-xl shadow-md transition transform ${
+                className={`flex items-center gap-1.5 px-4 sm:px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md transition transform ${
                   isOverpaid
                     ? 'bg-slate-400 cursor-not-allowed opacity-70'
                     : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:-translate-y-0.5'

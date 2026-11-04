@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>پنل اختصاصی صدور لایسنس آفلاین - حسابداری مَه (ویژه مالک)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Tahoma, 'Vazirmatn', 'Segoe UI', sans-serif;
+    }
+    body {
+      background: radial-gradient(circle at top right, #1e1b4b, #0f172a 60%, #020617);
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 20px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #1e1b4b 100%);
+      padding: 22px 26px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .header-badge {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    .header p {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-top: 4px;
+    }
+    .content {
+      padding: 24px 26px;
+    }
+    .form-group {
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: bold;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    .hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      background: #020617;
+      color: #f8fafc;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    }
+    .ltr-input {
+      direction: ltr;
+      text-align: left;
+      font-family: Consolas, Monaco, monospace;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 520px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+    .btn {
+      width: 100%;
+      padding: 13px 18px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #4f46e5, #059669);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 4px;
+    }
+    .btn:hover {
+      opacity: 0.95;
+    }
+    .btn:active {
+      transform: scale(0.99);
+    }
+    .error-box {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(225, 29, 72, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      color: #fda4af;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .result-box {
+      display: none;
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 14px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .result-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #6ee7b7;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .license-code {
+      direction: ltr;
+      text-align: center;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+      font-weight: bold;
+      background: #020617;
+      color: #34d399;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px dashed rgba(52, 211, 153, 0.5);
+      word-break: break-all;
+      user-select: all;
+      margin-bottom: 12px;
+    }
+    .copy-btn {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(52, 211, 153, 0.5);
+      background: rgba(16, 185, 129, 0.25);
+      color: #ecfdf5;
+      font-weight: bold;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: rgba(16, 185, 129, 0.4);
+    }
+    .security-note {
+      margin-top: 20px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid #334155;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <span class="header-badge">🔒 امضای دیجیتال نامتقارن Schnorr 256-Bit (ضد هوش مصنوعی)</span>
+      <h1>مولد لایسنس فعال‌سازی آفلاین — حسابداری مَه</h1>
+      <p>این فایل کاملاً آفلاین کار می‌کند. کلید خصوصی در کد ذخیره نشده و فقط با رمز مادر شما در لحظه محاسبه می‌شود.</p>
+    </div>
+
+    <div class="content">
+      <div class="form-group">
+        <label for="masterPassword">۱. رمز مادر اختصاصی مالک (Master Secret Key):</label>
+        <input
+          type="password"
+          id="masterPassword"
+          class="ltr-input"
+          placeholder="Enter Owner Master Secret..."
+          autocomplete="off"
+        />
+        <div class="hint">بدون وارد کردن رمز مادر صحیح، هیچ کدی (حتی توسط هوش مصنوعی) قابل تولید نیست.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="deviceId">۲. کد شناسایی کامپیوتر مقصد (Device ID نمایش داده شده در برنامه):</label>
+        <input
+          type="text"
+          id="deviceId"
+          class="ltr-input"
+          placeholder="MEH-PC-XXXX-XXXX-XXXX"
+          autocomplete="off"
+        />
+        <div class="hint">کد سیستم نمایش داده شده در صفحه قفل کامپیوتر جدید را دقیقاً در این کادر وارد کنید.</div>
+      </div>
+
+      <div class="row">
+        <div class="form-group">
+          <label for="licenseType">۳. نوع اعتبار لایسنس:</label>
+          <select id="licenseType" onchange="toggleCustomDays()">
+            <option value="PERM">دائمی (مادام‌العمر بدون انقضا)</option>
+            <option value="30">موقت — ۳۰ روزه</option>
+            <option value="90">موقت — ۳ ماهه (۹۰ روز)</option>
+            <option value="365">موقت — ۱ ساله (۳۶۵ روز)</option>
+            <option value="CUSTOM">تعداد روز دلخواه</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="customDaysGroup" style="display: none;">
+          <label for="customDays">تعداد روز اعتبار:</label>
+          <input type="number" id="customDays" class="ltr-input" value="60" min="1" max="3650" />
+        </div>
+      </div>
+
+      <button type="button" class="btn" onclick="generateOfflineLicense()">
+        ⚡ تولید کد لایسنس فعال‌سازی آفلاین
+      </button>
+
+      <div id="errorBox" class="error-box"></div>
+
+      <div id="resultBox" class="result-box">
+        <div class="result-title">
+          <span>✅ کد لایسنس اختصاصی این کامپیوتر آماده شد:</span>
+          <span id="expiryBadge"></span>
+        </div>
+        <div id="licenseOutput" class="license-code"></div>
+        <button type="button" class="copy-btn" onclick="copyLicense()">
+          📋 کپی کد لایسنس در حافظه (Copy)
+        </button>
+      </div>
+
+      <div class="security-note">
+        <strong>🛡️ معماری امنیتی:</strong>
+        برنامه حسابداری فقط دارای «کلید عمومی» (Public Key) است و کلید خصوصی تنها از طریق ۵,۰۰۰ دور هش رمزنگاری از «رمز مادر» شما استخراج می‌شود. بنابراین حتی در صورت بررسی کل سورس‌کد توسط هر هوش مصنوعی، امکان جعل امضای دیجیتال بدون داشتن رمز مادر شما وجود ندارد.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Public Parameters (Safe Prime P, Subgroup Order Q, Generator G, Public Key Y)
+    const P = BigInt('0xe147e4d0a7c0b9ce2ea9eb836247d8c25814009762e2501e2f27b4566ccb876f');
+    const Q = BigInt('0x70a3f26853e05ce71754f5c1b123ec612c0a004bb171280f1793da2b3665c3b7');
+    const G = 4n;
+    const EXPECTED_Y = BigInt('0x2910df692ffd5dcd33b2ee9fe8cb3c2de4681db71803595241cd1e3ed6d1c962');
+
+    function sha256HexPure(ascii) {
+      function rightRotate(value, amount) {
+        return (value >>> amount) | (value << (32 - amount));
+      }
+      const bytes = new TextEncoder().encode(ascii);
+      const K = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+      ];
+      const H = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+      ];
+      const bitLen = bytes.length * 8;
+      const totalLen = Math.ceil((bytes.length + 9) / 64) * 64;
+      const padded = new Uint8Array(totalLen);
+      padded.set(bytes);
+      padded[bytes.length] = 0x80;
+      const view = new DataView(padded.buffer);
+      view.setUint32(totalLen - 8, Math.floor(bitLen / 0x100000000), false);
+      view.setUint32(totalLen - 4, bitLen >>> 0, false);
+
+      const W = new Uint32Array(64);
+      for (let offset = 0; offset < totalLen; offset += 64) {
+        for (let i = 0; i < 16; i++) {
+          W[i] = view.getUint32(offset + i * 4, false);
+        }
+        for (let i = 16; i < 64; i++) {
+          const s0 = rightRotate(W[i - 15], 7) ^ rightRotate(W[i - 15], 18) ^ (W[i - 15] >>> 3);
+          const s1 = rightRotate(W[i - 2], 17) ^ rightRotate(W[i - 2], 19) ^ (W[i - 2] >>> 10);
+          W[i] = (W[i - 16] + s0 + W[i - 7] + s1) >>> 0;
+        }
+        let [a, b, c, d, e, f, g, h] = H;
+        for (let i = 0; i < 64; i++) {
+          const S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
+          const ch = (e & f) ^ (~e & g);
+          const temp1 = (h + S1 + ch + K[i] + W[i]) >>> 0;
+          const S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
+          const maj = (a & b) ^ (a & c) ^ (b & c);
+          const temp2 = (S0 + maj) >>> 0;
+          h = g; g = f; f = e; e = (d + temp1) >>> 0;
+          d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+        }
+        H[0] = (H[0] + a) >>> 0;
+        H[1] = (H[1] + b) >>> 0;
+        H[2] = (H[2] + c) >>> 0;
+        H[3] = (H[3] + d) >>> 0;
+        H[4] = (H[4] + e) >>> 0;
+        H[5] = (H[5] + f) >>> 0;
+        H[6] = (H[6] + g) >>> 0;
+        H[7] = (H[7] + h) >>> 0;
+      }
+      return H.map(v => v.toString(16).padStart(8, '0')).join('');
+    }
+
+    function modPow(base, exp, mod) {
+      let res = 1n;
+      let b = ((base % mod) + mod) % mod;
+      let e = exp;
+      while (e > 0n) {
+        if (e & 1n) res = (res * b) % mod;
+        e >>= 1n;
+        b = (b * b) % mod;
+      }
+      return res;
+    }
+
+    function derivePrivateKey(masterPass) {
+      let h = sha256HexPure('MEH_ROOT_2025::' + masterPass.trim());
+      for (let i = 0; i < 5000; i++) {
+        h = sha256HexPure(h + '::' + i + '::' + masterPass.trim());
+      }
+      return (BigInt('0x' + h) % (Q - 2n)) + 2n;
+    }
+
+    function toggleCustomDays() {
+      const val = document.getElementById('licenseType').value;
+      document.getElementById('customDaysGroup').style.display = val === 'CUSTOM' ? 'block' : 'none';
+    }
+
+    function getExpiryCode() {
+      const type = document.getElementById('licenseType').value;
+      if (type === 'PERM') return 'PERM';
+      const days = type === 'CUSTOM'
+        ? parseInt(document.getElementById('customDays').value, 10) || 30
+        : parseInt(type, 10);
+      const target = new Date(Date.now() + days * 86400000);
+      const yyyy = target.getFullYear();
+      const mm = String(target.getMonth() + 1).padStart(2, '0');
+      const dd = String(target.getDate()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}`;
+    }
+
+    function generateOfflineLicense() {
+      const errorBox = document.getElementById('errorBox');
+      const resultBox = document.getElementById('resultBox');
+      errorBox.style.display = 'none';
+      resultBox.style.display = 'none';
+
+      const masterPass = document.getElementById('masterPassword').value.trim();
+      const rawDeviceId = document.getElementById('deviceId').value.trim().toUpperCase().replace(/\s+/g, '');
+
+      if (!masterPass) {
+        errorBox.textContent = '❌ لطفاً رمز مادر اختصاصی مالک را وارد نمایید.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      if (!rawDeviceId || !rawDeviceId.startsWith('MEH-PC-')) {
+        errorBox.textContent = '❌ کد شناسایی سیستم معتبر نیست (باید با MEH-PC- شروع شود).';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      // Derive x and verify against EXPECTED_Y
+      const x = derivePrivateKey(masterPass);
+      const computedY = modPow(G, x, P);
+
+      if (computedY !== EXPECTED_Y) {
+        errorBox.textContent = '🚫 رمز مادر وارد شده اشتباه است! امضای دیجیتال صادر نشد.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      const expiryCode = getExpiryCode();
+      const msg = `${rawDeviceId}|${expiryCode}`;
+
+      // Deterministic Schnorr signature (k, R, e, s)
+      const k = (BigInt('0x' + sha256HexPure(x.toString(16) + '|' + msg)) % (Q - 2n)) + 2n;
+      const R = modPow(G, k, P);
+      const eHex = sha256HexPure(R.toString(16) + '|' + EXPECTED_Y.toString(16) + '|' + msg).slice(0, 24);
+      const e = BigInt('0x' + eHex);
+      const s = (((k - (x * e) % Q) % Q) + Q) % Q;
+      const sHex = s.toString(16);
+
+      const finalLicense = `MEH1-${expiryCode}-${eHex.toUpperCase()}-${sHex.toUpperCase()}`;
+
+      document.getElementById('licenseOutput').textContent = finalLicense;
+      document.getElementById('expiryBadge').textContent =
+        expiryCode === 'PERM' ? 'اعتبار: دائمی' : `اعتبار تا: ${expiryCode}`;
+      resultBox.style.display = 'block';
+    }
+
+    function copyLicense() {
+      const code = document.getElementById('licenseOutput').textContent;
+      if (!code) return;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('کد لایسنس با موفقیت در حافظه کپی شد.');
+      });
+    }
+  </script>
+</body>
+</html>

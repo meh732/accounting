@@ -11,9 +11,16 @@ interface BankCardexModalProps {
 }
 
 export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClose }) => {
-  const { invoices, expenses, vouchers, settings } = useAccounting();
+  const { invoices, expenses, vouchers, financialTransactions, cheques, settings } = useAccounting();
 
-  const cardex = calculateBankCardex(account, invoices, expenses, vouchers);
+  const cardex = calculateBankCardex(
+    account,
+    invoices,
+    expenses,
+    vouchers,
+    financialTransactions,
+    cheques
+  );
 
   const handlePrint = () => {
     window.print();

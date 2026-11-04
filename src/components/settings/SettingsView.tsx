@@ -47,6 +47,7 @@ export const SettingsView: React.FC = () => {
   } = useAccounting();
 
   const [companyName, setCompanyName] = useState(settings.companyName || 'حسابداری مه');
+  const [tagline, setTagline] = useState(settings.tagline || 'سامانه یکپارچه و استاندارد مالی و بازرگانی');
   const [financialYear, setFinancialYear] = useState(settings.financialYear || '1403');
   const [currency, setCurrency] = useState(settings.currency);
   const [enableTax, setEnableTax] = useState(settings.enableTax !== false);
@@ -55,7 +56,11 @@ export const SettingsView: React.FC = () => {
   const [nationalCode, setNationalCode] = useState(settings.nationalCode || '');
   const [economicCode, setEconomicCode] = useState(settings.economicCode || '');
   const [phone, setPhone] = useState(settings.phone || '');
+  const [postalCode, setPostalCode] = useState(settings.postalCode || '');
   const [address, setAddress] = useState(settings.address || '');
+  const [invoiceFooterNote, setInvoiceFooterNote] = useState(
+    settings.invoiceFooterNote || 'کلیه اجناس فروخته شده طبق شرایط گارانتی معتبر شرکت می‌باشد. از اعتماد شما سپاسگزاریم.'
+  );
 
   // Bot Backup State
   const [botEnabled, setBotEnabled] = useState(settings.botBackup?.enabled || false);
@@ -79,6 +84,7 @@ export const SettingsView: React.FC = () => {
     e.preventDefault();
     updateSettings({
       companyName,
+      tagline,
       financialYear,
       currency,
       enableTax,
@@ -88,7 +94,9 @@ export const SettingsView: React.FC = () => {
       nationalCode,
       economicCode,
       phone,
+      postalCode,
       address,
+      invoiceFooterNote,
       botBackup: {
         enabled: botEnabled,
         intervalHours: Number(botIntervalHours) || 6,
@@ -204,15 +212,26 @@ export const SettingsView: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">نام شرکت / فروشگاه</label>
+              <label className="block font-semibold text-slate-700 mb-1">نام شرکت / فروشگاه (چاپ در سربرگ فاکتورها)</label>
               <input
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-medium"
+                placeholder="مثال: فروشگاه بازرگانی آفتاب"
+                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-bold text-slate-900"
                 required
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">شعار یا عنوان فرعی سربرگ فاکتور</label>
+              <input
+                type="text"
+                value={tagline}
+                onChange={(e) => setTagline(e.target.value)}
+                placeholder="مثال: پخش عمده و خرده لوازم..."
+                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-medium"
               />
             </div>
             <div>
@@ -300,15 +319,26 @@ export const SettingsView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">واحد پول پیش‌فرض</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value as 'تومان' | 'ریال')}
-                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-bold"
-              >
-                <option value="تومان">تومان</option>
-                <option value="ریال">ریال</option>
-              </select>
+              <label className="block font-semibold text-slate-700 mb-1">واحد پول کل نرم‌افزار (تومان / ریال)</label>
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-300">
+                {(['تومان', 'ریال'] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    onClick={() => {
+                      setCurrency(unit);
+                      updateSettings({ currency: unit });
+                    }}
+                    className={`py-1.5 rounded-md font-bold text-xs transition ${
+                      currency === unit
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    {unit}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">شناسه ملی / کد ملی</label>
@@ -332,14 +362,24 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">تلفن‌های تماس</label>
+              <label className="block font-semibold text-slate-700 mb-1">تلفن‌های تماس فروشگاه</label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="02188888888"
+                className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-mono text-left"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">کد پستی</label>
+              <input
+                type="text"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                placeholder="1599999999"
                 className="w-full bg-slate-50 border border-slate-300 rounded-md p-2 font-mono text-left"
               />
             </div>
@@ -353,6 +393,19 @@ export const SettingsView: React.FC = () => {
                 className="w-full bg-slate-50 border border-slate-300 rounded-md p-2"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">
+              متن و شرایط ثابت پایین فاکتورهای چاپی (فاکتور فروش و خرید)
+            </label>
+            <input
+              type="text"
+              value={invoiceFooterNote}
+              onChange={(e) => setInvoiceFooterNote(e.target.value)}
+              placeholder="مثال: کلیه کالاها دارای ضمانت سلامت فیزیکی می‌باشند. از خرید شما سپاسگزاریم."
+              className="w-full bg-slate-50 border border-slate-300 rounded-md p-2"
+            />
           </div>
 
           {/* Automation Checkbox */}

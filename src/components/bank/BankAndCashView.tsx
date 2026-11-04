@@ -25,6 +25,8 @@ export const BankAndCashView: React.FC = () => {
     invoices,
     expenses,
     vouchers,
+    financialTransactions,
+    cheques,
     settings,
   } = useAccounting();
 
@@ -125,7 +127,14 @@ export const BankAndCashView: React.FC = () => {
 
   // Calculate Total Liquid Assets
   const totalLiquidity = bankAccounts.reduce((sum, b) => {
-    const { currentBalance } = calculateBankCardex(b, invoices, expenses, vouchers);
+    const { currentBalance } = calculateBankCardex(
+      b,
+      invoices,
+      expenses,
+      vouchers,
+      financialTransactions,
+      cheques
+    );
     return sum + currentBalance;
   }, 0);
 
@@ -253,7 +262,14 @@ export const BankAndCashView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredAccounts.map((acc) => {
-                const { currentBalance } = calculateBankCardex(acc, invoices, expenses, vouchers);
+                const { currentBalance } = calculateBankCardex(
+                  acc,
+                  invoices,
+                  expenses,
+                  vouchers,
+                  financialTransactions,
+                  cheques
+                );
 
                 const typeBadge =
                   acc.type === 'bank'

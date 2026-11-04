@@ -1152,7 +1152,50 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateInvoice = (id: string, invData: Partial<Invoice>) => {
-    setInvoices((prev) => prev.map((i) => (i.id === id ? { ...i, ...invData } : i)));
+    const oldInv = invoices.find((i) => i.id === id);
+    if (!oldInv) return;
+
+    const updatedInv: Invoice = { ...oldInv, ...invData };
+
+    // Sync product stock quantities (revert old, apply new)
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => {
+        let stock = p.stockQuantity;
+        const oldItem = oldInv.items.find((i) => i.productId === p.id);
+        if (oldItem) {
+          if (oldInv.type === 'sales') stock += oldItem.quantity;
+          else if (oldInv.type === 'purchase') stock -= oldItem.quantity;
+          else if (oldInv.type === 'sales_return') stock -= oldItem.quantity;
+          else if (oldInv.type === 'purchase_return') stock += oldItem.quantity;
+        }
+        const newItem = updatedInv.items.find((i) => i.productId === p.id);
+        if (newItem) {
+          if (updatedInv.type === 'sales') stock -= newItem.quantity;
+          else if (updatedInv.type === 'purchase') stock += newItem.quantity;
+          else if (updatedInv.type === 'sales_return') stock += newItem.quantity;
+          else if (updatedInv.type === 'purchase_return') stock -= newItem.quantity;
+        }
+        return { ...p, stockQuantity: Math.max(0, stock) };
+      })
+    );
+
+    // Regenerate auto voucher if enabled
+    if (settings.autoGenerateVouchers) {
+      const newVch = generateVoucherForInvoice(updatedInv);
+      if (newVch) {
+        if (oldInv.voucherId) {
+          newVch.id = oldInv.voucherId;
+          const existingVch = vouchers.find((v) => v.id === oldInv.voucherId);
+          if (existingVch) newVch.voucherNumber = existingVch.voucherNumber;
+          setVouchers((prev) => prev.map((v) => (v.id === oldInv.voucherId ? newVch : v)));
+        } else {
+          updatedInv.voucherId = newVch.id;
+          setVouchers((prev) => [newVch, ...prev]);
+        }
+      }
+    }
+
+    setInvoices((prev) => prev.map((i) => (i.id === id ? updatedInv : i)));
   };
 
   const deleteInvoice = (id: string) => {
@@ -1413,6 +1456,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-pass-deb-${Date.now()}`,
             accountCode: '10102',
             accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliId: bankAccountId,
             tafsiliTitle: bankTitle,
             description: `واریز وصولی چک شماره ${chq.chequeNumber} به ${bankTitle}`,
             debit: chq.amount,
@@ -1457,9 +1501,10 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-paypass-crd-${Date.now()}`,
             accountCode: '10102',
             accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliId: bankAccountId,
             tafsiliTitle: bankTitle,
             description: `برداشت از ${bankTitle} بابت پاس شدن چک شماره ${chq.chequeNumber}`,
-            debit: 0,
+            debit: chq.amount > 0 ? 0 : 0,
             credit: chq.amount,
           },
         ],
@@ -1624,6 +1669,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-rec-deb-${Date.now()}`,
               accountCode: destAccountCode,
               accountTitle: destAccountTitle,
+              tafsiliId: createdTx.destinationAccountId,
               tafsiliTitle: createdTx.destinationAccountTitle || 'حساب دریافت',
               description: `واریز وجه از ${createdTx.contactName || 'مشتری'}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
               debit: createdTx.amount,
@@ -1633,6 +1679,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-rec-crd-${Date.now()}`,
               accountCode: '10301',
               accountTitle: 'حساب‌های دریافتنی تجاری (مشتریان)',
+              tafsiliId: createdTx.contactId,
               tafsiliTitle: createdTx.contactName || 'طرف‌حساب',
               contactId: createdTx.contactId,
               description: createdTx.description || `تسویه حساب بابت دریافت وجه`,
@@ -1666,6 +1713,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-pay-deb-${Date.now()}`,
               accountCode: '30101',
               accountTitle: 'حساب‌های پرداختنی تجاری (تامین‌کنندگان)',
+              tafsiliId: createdTx.contactId,
               tafsiliTitle: createdTx.contactName || 'طرف‌حساب',
               contactId: createdTx.contactId,
               description: createdTx.description || `پرداخت به طرف‌حساب`,
@@ -1676,6 +1724,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-pay-crd-${Date.now()}`,
               accountCode: srcAccountCode,
               accountTitle: srcAccountTitle,
+              tafsiliId: createdTx.sourceAccountId,
               tafsiliTitle: createdTx.sourceAccountTitle || 'حساب پرداخت',
               description: `پرداخت به ${createdTx.contactName || 'طرف‌حساب'}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
               debit: 0,
@@ -1705,6 +1754,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-trf-deb-${Date.now()}`,
               accountCode: '10102',
               accountTitle: 'حساب‌های بانکی و صندوق',
+              tafsiliId: createdTx.destinationAccountId,
               tafsiliTitle: createdTx.destinationAccountTitle || 'حساب مقصد',
               description: `واریز انتقالی از ${createdTx.sourceAccountTitle}${createdTx.trackingNumber ? ' (پیگیری: ' + createdTx.trackingNumber + ')' : ''}`,
               debit: createdTx.amount,
@@ -1714,6 +1764,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: `vi-tx-trf-crd-${Date.now()}`,
               accountCode: '10102',
               accountTitle: 'حساب‌های بانکی و صندوق',
+              tafsiliId: createdTx.sourceAccountId,
               tafsiliTitle: createdTx.sourceAccountTitle || 'حساب مبدا',
               description: `برداشت بابت انتقال به ${createdTx.destinationAccountTitle}`,
               debit: 0,
@@ -1767,6 +1818,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       invoices,
       vouchers,
       expenses,
+      financialYears,
+      cheques,
+      financialTransactions,
       exportDate: new Date().toISOString(),
       shamsiDate: getCurrentShamsiDate(),
       version: '1.0.0',
@@ -1898,6 +1952,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           invoices,
           vouchers,
           expenses,
+          financialYears,
+          cheques,
+          financialTransactions,
           exportDate: new Date().toISOString(),
           shamsiDate: getCurrentShamsiDate(),
           version: '1.0.0',
@@ -2398,19 +2455,21 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const importDatabaseJSON = (jsonData: string): boolean => {
     try {
       const parsed = JSON.parse(jsonData);
-      if (parsed.chartOfAccounts && parsed.invoices && parsed.vouchers) {
+      const accountsList = parsed.chartOfAccounts || parsed.accounts;
+      const categoriesList = parsed.productCategories || parsed.categories;
+      if (parsed && typeof parsed === 'object' && (accountsList || parsed.invoices || parsed.contacts)) {
         if (parsed.settings) setSettings(parsed.settings);
-        if (parsed.chartOfAccounts) setChartOfAccounts(parsed.chartOfAccounts);
-        if (parsed.contacts) setContacts(parsed.contacts);
-        if (parsed.bankAccounts) setBankAccounts(parsed.bankAccounts);
-        if (parsed.productCategories) setProductCategories(parsed.productCategories);
-        if (parsed.products) setProducts(parsed.products);
-        if (parsed.invoices) setInvoices(parsed.invoices);
-        if (parsed.vouchers) setVouchers(parsed.vouchers);
-        if (parsed.expenses) setExpenses(parsed.expenses);
-        if (parsed.financialYears) setFinancialYears(parsed.financialYears);
-        if (parsed.cheques) setCheques(parsed.cheques);
-        if (parsed.financialTransactions) setFinancialTransactions(parsed.financialTransactions);
+        if (Array.isArray(accountsList) && accountsList.length > 0) setChartOfAccounts(accountsList);
+        if (Array.isArray(parsed.contacts)) setContacts(parsed.contacts);
+        if (Array.isArray(parsed.bankAccounts)) setBankAccounts(parsed.bankAccounts);
+        if (Array.isArray(categoriesList)) setProductCategories(categoriesList);
+        if (Array.isArray(parsed.products)) setProducts(parsed.products);
+        if (Array.isArray(parsed.invoices)) setInvoices(parsed.invoices);
+        if (Array.isArray(parsed.vouchers)) setVouchers(parsed.vouchers);
+        if (Array.isArray(parsed.expenses)) setExpenses(parsed.expenses);
+        if (Array.isArray(parsed.financialYears)) setFinancialYears(parsed.financialYears);
+        if (Array.isArray(parsed.cheques)) setCheques(parsed.cheques);
+        if (Array.isArray(parsed.financialTransactions)) setFinancialTransactions(parsed.financialTransactions);
         return true;
       }
       return false;
