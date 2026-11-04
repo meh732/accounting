@@ -414,75 +414,26 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     setTimeout(() => {
       isApplyingRemoteUpdateRef.current = false;
-    }, 400);
+      isInitialLoadedRef.current = true;
+    }, 550);
   };
 
-  // Upload current local state directly to server
-  const pushLocalDataToServer = async () => {
-    try {
-      const payload = {
-        settings,
-        accounts: chartOfAccounts,
-        contacts,
-        bankAccounts,
-        categories: productCategories,
-        products,
-        invoices,
-        vouchers,
-        expenses,
-        financialYears,
-        cheques,
-        financialTransactions,
-        backups: autoBackupSnapshots,
-        senderClientId: clientIdRef.current
-      };
-
-      const res = await fetch('/api/data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Client-Id': clientIdRef.current
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        const resData = await res.json();
-        serverVersionRef.current = resData.version;
-        consecutiveFailuresRef.current = 0;
-        setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-        setServerSyncStatus('synced');
-      }
-    } catch (err) {
-      console.warn('Error pushing local data to server:', err);
-    }
-  };
-
-  // Load from Central Server on initial mount or manual click
+  // Load from Central Linux Server on initial mount or manual click (Server is always the Single Source of Truth)
   const syncWithServer = async () => {
     try {
       setServerSyncStatus('syncing');
-      const res = await fetch('/api/data');
+      const res = await fetch('/api/data', { cache: 'no-store' });
       if (res.ok) {
         const serverDb = await res.json();
-        
-        // If server is brand new/empty and we have local data, populate server!
-        const serverHasData = serverDb && (
-          (serverDb.invoices && serverDb.invoices.length > 0) ||
-          (serverDb.contacts && serverDb.contacts.length > 0) ||
-          (serverDb.products && serverDb.products.length > 0) ||
-          (serverDb.vouchers && serverDb.vouchers.length > 0)
-        );
-        const localHasData = invoices.length > 0 || contacts.length > 0 || products.length > 0 || vouchers.length > 0;
-
-        if (!serverHasData && localHasData) {
-          await pushLocalDataToServer();
-        } else if (serverDb) {
+        if (serverDb && typeof serverDb === 'object') {
           applyServerDatabase(serverDb);
+        } else {
+          isInitialLoadedRef.current = true;
         }
         consecutiveFailuresRef.current = 0;
         setServerSyncStatus('synced');
       } else {
+        isInitialLoadedRef.current = true;
         consecutiveFailuresRef.current += 1;
         if (consecutiveFailuresRef.current > 2) {
           setServerSyncStatus('offline');
@@ -490,12 +441,11 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } catch (err) {
       console.warn('Central server sync connection attempt:', err);
+      isInitialLoadedRef.current = true;
       consecutiveFailuresRef.current += 1;
       if (consecutiveFailuresRef.current > 2) {
         setServerSyncStatus('offline');
       }
-    } finally {
-      isInitialLoadedRef.current = true;
     }
   };
 
@@ -641,7 +591,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const checkServerVersion = async () => {
       if (!isInitialLoadedRef.current || isSavingToServerRef.current || isApplyingRemoteUpdateRef.current) return;
       try {
-        const res = await fetch('/api/version');
+        const res = await fetch('/api/version', { cache: 'no-store' });
         if (res.ok) {
           const { version } = await res.json();
           if (version && version > serverVersionRef.current) {
@@ -815,6 +765,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Auto-heal products with buyPrice=0 if purchase invoices exist, and auto-sync System Opening Balance Voucher
   useEffect(() => {
+    if (!isInitialLoadedRef.current || isApplyingRemoteUpdateRef.current) return;
+
     // 1. Heal product buyPrice if 0 but purchased in an invoice
     let needsProductHeal = false;
     const healedProducts = products.map((p) => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import {
   Settings,
@@ -79,6 +79,33 @@ export const SettingsView: React.FC = () => {
   const [isYearEndModalOpen, setIsYearEndModalOpen] = useState(false);
   const [newYearInput, setNewYearInput] = useState('');
   const [showAddYear, setShowAddYear] = useState(false);
+
+  // Sync local form state when central server settings are loaded or updated
+  useEffect(() => {
+    setCompanyName(settings.companyName || 'حسابداری مه');
+    setTagline(settings.tagline || 'سامانه یکپارچه و استاندارد مالی و بازرگانی');
+    setFinancialYear(settings.financialYear || '1403');
+    setCurrency(settings.currency);
+    setEnableTax(settings.enableTax !== false);
+    setAutoGenerateVouchers(settings.autoGenerateVouchers);
+    setTaxRate(settings.taxRate ?? settings.defaultTaxRate ?? 10);
+    setNationalCode(settings.nationalCode || '');
+    setEconomicCode(settings.economicCode || '');
+    setPhone(settings.phone || '');
+    setPostalCode(settings.postalCode || '');
+    setAddress(settings.address || '');
+    setInvoiceFooterNote(
+      settings.invoiceFooterNote || 'کلیه اجناس فروخته شده طبق شرایط گارانتی معتبر شرکت می‌باشد. از اعتماد شما سپاسگزاریم.'
+    );
+    setBotEnabled(settings.botBackup?.enabled || false);
+    setBotIntervalHours(settings.botBackup?.intervalHours || 6);
+    setTelegramEnabled(settings.botBackup?.telegramEnabled || false);
+    setTelegramBotToken(settings.botBackup?.telegramBotToken || '');
+    setTelegramAdminChatIds(settings.botBackup?.telegramAdminChatIds || '');
+    setBaleEnabled(settings.botBackup?.baleEnabled || false);
+    setBaleBotToken(settings.botBackup?.baleBotToken || '');
+    setBaleAdminChatIds(settings.botBackup?.baleAdminChatIds || '');
+  }, [settings]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

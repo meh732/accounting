@@ -298,24 +298,78 @@ export function verifyOfflineLicenseKey(rawLicenseKey: string, currentDeviceId?:
   }
 }
 
-export function getStoredValidLicense(): VerifiedLicenseInfo {
-  const deviceId = getOrCreateDeviceId();
+export function getStoredRawLicenseKey(): string | null {
   try {
-    const savedKey = localStorage.getItem(LICENSE_STORAGE_KEY);
-    if (!savedKey) {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(LICENSE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredActivatedDeviceId(): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem('meh_acc_activated_device_id_v1');
+  } catch {
+    return null;
+  }
+}
+
+export function cacheServerLicenseLocally(rawKey: string, activatedDeviceId: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LICENSE_STORAGE_KEY, rawKey.trim().toUpperCase().replace(/\s+/g, ''));
+    localStorage.setItem('meh_acc_activated_device_id_v1', normalizeDeviceId(activatedDeviceId));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function getStoredValidLicense(preferredDeviceId?: string): VerifiedLicenseInfo {
+  const fallbackDeviceId = preferredDeviceId || getStoredActivatedDeviceId() || getOrCreateDeviceId();
+  try {
+    if (typeof localStorage === 'undefined') {
       return {
         valid: false,
-        deviceId,
+        deviceId: fallbackDeviceId,
         expiryCode: '',
         isPermanent: false,
         expiresAtLabel: '',
       };
     }
-    return verifyOfflineLicenseKey(savedKey, deviceId);
+    const savedKey = localStorage.getItem(LICENSE_STORAGE_KEY);
+    if (!savedKey) {
+      return {
+        valid: false,
+        deviceId: fallbackDeviceId,
+        expiryCode: '',
+        isPermanent: false,
+        expiresAtLabel: '',
+      };
+    }
+
+    // Try verifying against preferredDeviceId, stored activatedDeviceId, or local browser deviceId
+    const candidates = Array.from(
+      new Set(
+        [preferredDeviceId, getStoredActivatedDeviceId(), getOrCreateDeviceId()].filter(
+          (x): x is string => Boolean(x)
+        )
+      )
+    );
+
+    for (const candidateId of candidates) {
+      const check = verifyOfflineLicenseKey(savedKey, candidateId);
+      if (check.valid) {
+        return check;
+      }
+    }
+
+    return verifyOfflineLicenseKey(savedKey, fallbackDeviceId);
   } catch {
     return {
       valid: false,
-      deviceId,
+      deviceId: fallbackDeviceId,
       expiryCode: '',
       isPermanent: false,
       expiresAtLabel: '',
@@ -323,10 +377,24 @@ export function getStoredValidLicense(): VerifiedLicenseInfo {
   }
 }
 
-export function saveOfflineLicenseKey(rawKey: string): VerifiedLicenseInfo {
-  const result = verifyOfflineLicenseKey(rawKey);
-  if (result.valid) {
-    localStorage.setItem(LICENSE_STORAGE_KEY, rawKey.trim().toUpperCase().replace(/\s+/g, ''));
+export function saveOfflineLicenseKey(rawKey: string, targetDeviceId?: string): VerifiedLicenseInfo {
+  const cleanKey = rawKey.trim().toUpperCase().replace(/\s+/g, '');
+  const candidates = Array.from(
+    new Set(
+      [targetDeviceId, getStoredActivatedDeviceId(), getOrCreateDeviceId()].filter(
+        (x): x is string => Boolean(x)
+      )
+    )
+  );
+
+  for (const candidateId of candidates) {
+    const result = verifyOfflineLicenseKey(cleanKey, candidateId);
+    if (result.valid) {
+      cacheServerLicenseLocally(cleanKey, candidateId);
+      return result;
+    }
   }
-  return result;
+
+  return verifyOfflineLicenseKey(cleanKey, targetDeviceId || getOrCreateDeviceId());
 }
+

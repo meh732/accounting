@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
@@ -13,6 +14,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
+const LICENSE_FILE = path.join(DATA_DIR, 'license.json');
 
 import {
   defaultChartOfAccounts,
@@ -28,6 +30,90 @@ import {
   defaultCompanySettings,
   defaultFinancialYears,
 } from './src/utils/defaultData';
+import {
+  sha256HexPure,
+  verifyOfflineLicenseKey,
+  normalizeDeviceId,
+  VerifiedLicenseInfo,
+} from './src/utils/offlineLicense';
+
+interface ServerLicenseRecord {
+  serverDeviceId: string;
+  activated: boolean;
+  activatedDeviceId?: string;
+  licenseKey?: string;
+  activatedAt?: string;
+}
+
+function generateDeterministicLinuxServerId(): string {
+  try {
+    let machineId = '';
+    if (fs.existsSync('/etc/machine-id')) {
+      machineId = fs.readFileSync('/etc/machine-id', 'utf-8').trim();
+    } else if (fs.existsSync('/var/lib/dbus/machine-id')) {
+      machineId = fs.readFileSync('/var/lib/dbus/machine-id', 'utf-8').trim();
+    }
+    const rawTraits = [
+      machineId || 'LINUX-SERVER',
+      os.hostname() || 'HOST',
+      os.platform() || 'linux',
+      os.arch() || 'x64',
+      os.cpus()?.[0]?.model || 'CPU',
+    ].join('|');
+    const digest = sha256HexPure('MEH_SERVER_FINGERPRINT_V1::' + rawTraits).toUpperCase();
+    return `MEH-PC-${digest.slice(0, 4)}-${digest.slice(4, 8)}-${digest.slice(8, 12)}`;
+  } catch {
+    return 'MEH-PC-8A4F-29D1-7C3E';
+  }
+}
+
+let serverLicenseState: ServerLicenseRecord = {
+  serverDeviceId: generateDeterministicLinuxServerId(),
+  activated: false,
+};
+
+function saveLicenseToDisk(record: ServerLicenseRecord) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const tempFile = `${LICENSE_FILE}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(record, null, 2), 'utf-8');
+    fs.renameSync(tempFile, LICENSE_FILE);
+  } catch (err) {
+    console.error('[Server License] Error saving license to disk:', err);
+  }
+}
+
+function getServerLicenseStatusPayload() {
+  const srvId = serverLicenseState.serverDeviceId;
+  if (serverLicenseState.activated && serverLicenseState.licenseKey) {
+    const targetId = serverLicenseState.activatedDeviceId || srvId;
+    const verified = verifyOfflineLicenseKey(serverLicenseState.licenseKey, targetId);
+    if (verified.valid) {
+      return {
+        activated: true,
+        serverDeviceId: srvId,
+        activatedDeviceId: targetId,
+        licenseKey: serverLicenseState.licenseKey,
+        licenseInfo: verified,
+      };
+    }
+  }
+  return {
+    activated: false,
+    serverDeviceId: srvId,
+    activatedDeviceId: srvId,
+    licenseKey: null,
+    licenseInfo: {
+      valid: false,
+      deviceId: srvId,
+      expiryCode: '',
+      isPermanent: false,
+      expiresAtLabel: '',
+    } as VerifiedLicenseInfo,
+  };
+}
 
 function createBlankDatabase() {
   return {
@@ -46,19 +132,38 @@ function createBlankDatabase() {
     cheques: defaultCheques,
     financialTransactions: defaultFinancialTransactions,
     backups: [],
+    license: serverLicenseState,
   };
 }
 
 // In-memory cache + file sync
 let currentDatabase = createBlankDatabase();
 
-// Ensure data directory exists and load DB
-function initDatabase() {
+function initLicenseAndDatabase() {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
+    // 1. Load license.json if present
+    if (fs.existsSync(LICENSE_FILE)) {
+      try {
+        const rawLic = JSON.parse(fs.readFileSync(LICENSE_FILE, 'utf-8'));
+        if (rawLic && typeof rawLic === 'object') {
+          serverLicenseState = {
+            serverDeviceId: rawLic.serverDeviceId || generateDeterministicLinuxServerId(),
+            activated: Boolean(rawLic.activated),
+            activatedDeviceId: rawLic.activatedDeviceId,
+            licenseKey: rawLic.licenseKey,
+            activatedAt: rawLic.activatedAt,
+          };
+        }
+      } catch (e) {
+        console.warn('[Server License] Could not parse license.json, regenerating.');
+      }
+    }
+
+    // 2. Load database.json if present
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
@@ -69,17 +174,32 @@ function initDatabase() {
         (!parsed.invoices || parsed.invoices.length === 0);
 
       if (parsed && typeof parsed === 'object' && !isOldBlankDb) {
+        // Recover license from database.json if license.json wasn't present
+        if (!serverLicenseState.activated && parsed.license && parsed.license.activated && parsed.license.licenseKey) {
+          serverLicenseState = {
+            serverDeviceId: parsed.license.serverDeviceId || serverLicenseState.serverDeviceId,
+            activated: true,
+            activatedDeviceId: parsed.license.activatedDeviceId || parsed.license.serverDeviceId,
+            licenseKey: parsed.license.licenseKey,
+            activatedAt: parsed.license.activatedAt,
+          };
+        }
+
         currentDatabase = {
           ...createBlankDatabase(),
           ...parsed,
           accounts: parsed.accounts && parsed.accounts.length > 0 ? parsed.accounts : defaultChartOfAccounts,
+          license: serverLicenseState,
         };
+        saveLicenseToDisk(serverLicenseState);
         console.log(`[Server DB] Successfully loaded database with version ${currentDatabase.version}`);
         return;
       }
     }
 
-    // Write initial verified database file
+    // Write initial verified database & license files
+    currentDatabase.license = serverLicenseState;
+    saveLicenseToDisk(serverLicenseState);
     saveDatabaseToDisk(currentDatabase);
     console.log(`[Server DB] Created initial verified accounting cycle database on server.`);
   } catch (err) {
@@ -102,15 +222,20 @@ function saveDatabaseToDisk(data: typeof currentDatabase) {
 }
 
 async function startServer() {
-  initDatabase();
+  initLicenseAndDatabase();
 
   const app = express();
   
-  // Universal CORS for all clients and proxies
+  // Universal CORS & No-Cache for API routes across LAN clients
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Client-Id');
+    if (req.path.startsWith('/api/')) {
+      res.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.header('Pragma', 'no-cache');
+      res.header('Expires', '0');
+    }
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
@@ -142,6 +267,17 @@ async function startServer() {
     }
   }
 
+  function broadcastLicenseUpdate() {
+    const payload = JSON.stringify(getServerLicenseStatusPayload());
+    for (const client of sseClients) {
+      try {
+        client.write(`event: license\ndata: ${payload}\n\n`);
+      } catch (err) {
+        sseClients.delete(client);
+      }
+    }
+  }
+
   // API Endpoints
   // 1. Health check & Server Status
   app.get('/api/health', (req, res) => {
@@ -151,8 +287,77 @@ async function startServer() {
       lastUpdated: currentDatabase.lastUpdated,
       connectedClients: sseClients.size,
       financialYear: currentDatabase.settings.financialYear || null,
+      license: getServerLicenseStatusPayload(),
       serverTime: new Date().toISOString()
     });
+  });
+
+  // 1.5. Central Server License Status & Activation (Shared by all LAN clients)
+  app.get('/api/license', (req, res) => {
+    res.json(getServerLicenseStatusPayload());
+  });
+
+  app.post('/api/license', (req, res) => {
+    try {
+      const { licenseKey, deviceId } = req.body || {};
+      const cleanKey = String(licenseKey || '').trim().toUpperCase().replace(/\s+/g, '');
+      if (!cleanKey) {
+        res.status(400).json({ valid: false, errorMessage: 'لطفاً کد لایسنس فعال‌سازی را وارد نمایید.' });
+        return;
+      }
+
+      // Check against the Linux Server's Hardware ID first, or the client-provided Device ID (for seamless migration of an already-activated admin browser)
+      const candidates = Array.from(
+        new Set(
+          [
+            serverLicenseState.serverDeviceId,
+            deviceId ? normalizeDeviceId(String(deviceId)) : '',
+            serverLicenseState.activatedDeviceId || '',
+          ].filter(Boolean)
+        )
+      );
+
+      for (const candidateId of candidates) {
+        const check = verifyOfflineLicenseKey(cleanKey, candidateId);
+        if (check.valid) {
+          serverLicenseState = {
+            serverDeviceId: serverLicenseState.serverDeviceId,
+            activated: true,
+            activatedDeviceId: candidateId,
+            licenseKey: cleanKey,
+            activatedAt: new Date().toISOString(),
+          };
+          currentDatabase.license = serverLicenseState;
+          saveLicenseToDisk(serverLicenseState);
+          saveDatabaseToDisk(currentDatabase);
+          broadcastLicenseUpdate();
+
+          res.json({
+            valid: true,
+            activated: true,
+            serverDeviceId: serverLicenseState.serverDeviceId,
+            activatedDeviceId: candidateId,
+            licenseKey: cleanKey,
+            licenseInfo: check,
+          });
+          return;
+        }
+      }
+
+      const failCheck = verifyOfflineLicenseKey(cleanKey, serverLicenseState.serverDeviceId);
+      res.status(400).json({
+        valid: false,
+        activated: false,
+        serverDeviceId: serverLicenseState.serverDeviceId,
+        errorMessage: failCheck.errorMessage || 'کد لایسنس وارد شده نامعتبر است یا متعلق به این سرور نمی‌باشد.',
+      });
+    } catch (err) {
+      console.error('[Server License] Error activating license:', err);
+      res.status(500).json({
+        valid: false,
+        errorMessage: 'خطا در ثبت لایسنس روی سرور مرکزی.',
+      });
+    }
   });
 
   // 2. Real-time Server-Sent Events (SSE) stream for instant synchronization
@@ -198,7 +403,10 @@ async function startServer() {
 
   // 4. Get entire unified server database
   app.get('/api/data', (req, res) => {
-    res.json(currentDatabase);
+    res.json({
+      ...currentDatabase,
+      license: serverLicenseState,
+    });
   });
 
   // 5. Update entire or partial database
@@ -216,10 +424,12 @@ async function startServer() {
 
       const cleanIncoming = { ...incoming };
       delete cleanIncoming.senderClientId;
+      delete cleanIncoming.license;
 
       currentDatabase = {
         ...currentDatabase,
         ...cleanIncoming,
+        license: serverLicenseState,
         version: newVersion,
         lastUpdated: now
       };
@@ -241,17 +451,32 @@ async function startServer() {
     }
   });
 
-  // 6. Reset database on server
+  // 6. Reset database on server (Zero out transactional/master records while preserving settings, accounts, financialYears, and license)
   app.post('/api/reset', (req, res) => {
     try {
-      const blank = createBlankDatabase();
-      blank.version = (currentDatabase.version || 1) + 1;
-      blank.lastUpdated = new Date().toISOString();
+      const senderClientId = req.headers['x-client-id'] as string || req.body?.senderClientId;
+      const newVersion = (currentDatabase.version || 1) + 1;
+      const now = new Date().toISOString();
 
-      currentDatabase = blank;
+      currentDatabase = {
+        ...currentDatabase,
+        version: newVersion,
+        lastUpdated: now,
+        accounts: defaultChartOfAccounts,
+        contacts: [],
+        bankAccounts: [],
+        categories: [],
+        products: [],
+        vouchers: [],
+        invoices: [],
+        expenses: [],
+        cheques: [],
+        financialTransactions: [],
+        license: serverLicenseState,
+      };
+
       saveDatabaseToDisk(currentDatabase);
-
-      broadcastDatabaseUpdate(currentDatabase);
+      broadcastDatabaseUpdate(currentDatabase, senderClientId);
 
       res.json({
         success: true,

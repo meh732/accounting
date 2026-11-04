@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   getOrCreateDeviceId,
   getStoredValidLicense,
+  getStoredRawLicenseKey,
+  cacheServerLicenseLocally,
   saveOfflineLicenseKey,
   VerifiedLicenseInfo,
 } from '../../utils/offlineLicense';
-import { ShieldCheck, Lock, Copy, CheckCircle2, KeyRound, AlertCircle, Cpu } from 'lucide-react';
+import { ShieldCheck, Lock, Copy, CheckCircle2, KeyRound, AlertCircle, Cpu, Server } from 'lucide-react';
 
 interface OfflineActivationGateProps {
   children: React.ReactNode;
@@ -17,12 +19,124 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
   const [licenseInput, setLicenseInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [copiedDevice, setCopiedDevice] = useState<boolean>(false);
+  const [isActivating, setIsActivating] = useState<boolean>(false);
 
   useEffect(() => {
-    const devId = getOrCreateDeviceId();
-    setDeviceId(devId);
-    const stored = getStoredValidLicense();
-    setLicenseStatus(stored);
+    let isMounted = true;
+    let eventSource: EventSource | null = null;
+
+    const checkServerAndLocalLicense = async () => {
+      const localBrowserDevId = getOrCreateDeviceId();
+      const localStored = getStoredValidLicense();
+      const localRawKey = getStoredRawLicenseKey();
+
+      // If local browser already has a cached valid license, unlock immediately while syncing with server in background
+      if (localStored.valid && isMounted) {
+        setDeviceId(localStored.deviceId || localBrowserDevId);
+        setLicenseStatus(localStored);
+      }
+
+      try {
+        const res = await fetch('/api/license', { cache: 'no-store' });
+        if (res.ok) {
+          const serverLic = await res.json();
+          const srvDevId = serverLic.serverDeviceId || localBrowserDevId;
+
+          // Case 1: The Linux Server is ALREADY activated -> unlock this LAN client immediately!
+          if (serverLic.activated && serverLic.licenseInfo?.valid) {
+            if (serverLic.licenseKey) {
+              cacheServerLicenseLocally(
+                serverLic.licenseKey,
+                serverLic.activatedDeviceId || srvDevId
+              );
+            }
+            if (isMounted) {
+              setDeviceId(serverLic.activatedDeviceId || srvDevId);
+              setLicenseStatus(serverLic.licenseInfo);
+            }
+            return;
+          }
+
+          // Case 2: The Linux Server is NOT activated yet, BUT this admin browser was already activated -> push activation to Server automatically!
+          if (localStored.valid && localRawKey) {
+            try {
+              await fetch('/api/license', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  licenseKey: localRawKey,
+                  deviceId: localStored.deviceId || localBrowserDevId,
+                }),
+              });
+            } catch {
+              // ignore network error
+            }
+            if (isMounted) {
+              setDeviceId(localStored.deviceId || srvDevId);
+              setLicenseStatus(localStored);
+            }
+            return;
+          }
+
+          // Case 3: Neither Server nor local browser is activated -> show the Linux Server's Hardware ID
+          if (isMounted) {
+            setDeviceId(srvDevId);
+            setLicenseStatus(
+              serverLic.licenseInfo || {
+                valid: false,
+                deviceId: srvDevId,
+                expiryCode: '',
+                isPermanent: false,
+                expiresAtLabel: '',
+              }
+            );
+          }
+          return;
+        }
+      } catch {
+        // Offline fallback if server API unreachable
+      }
+
+      if (isMounted) {
+        setDeviceId(localStored.deviceId || localBrowserDevId);
+        setLicenseStatus(localStored);
+      }
+    };
+
+    checkServerAndLocalLicense();
+
+    // Listen for real-time server activation events via SSE so all connected LAN browsers unlock immediately
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.addEventListener('license', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.activated && data.licenseInfo?.valid) {
+            if (data.licenseKey) {
+              cacheServerLicenseLocally(
+                data.licenseKey,
+                data.activatedDeviceId || data.serverDeviceId
+              );
+            }
+            if (isMounted) {
+              setDeviceId(data.activatedDeviceId || data.serverDeviceId);
+              setLicenseStatus(data.licenseInfo);
+            }
+          }
+        } catch {
+          // ignore parse error
+        }
+      });
+    } catch {
+      // ignore SSE error
+    }
+
+    return () => {
+      isMounted = false;
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, []);
 
   const handleCopyDeviceId = () => {
@@ -32,21 +146,66 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
     setTimeout(() => setCopiedDevice(false), 2000);
   };
 
-  const handleActivate = (e: React.FormEvent) => {
+  const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
-    const cleanInput = licenseInput.trim().toUpperCase();
+    const cleanInput = licenseInput.trim().toUpperCase().replace(/\s+/g, '');
     if (!cleanInput) {
       setErrorMsg('لطفاً کد لایسنس فعال‌سازی آفلاین را وارد نمایید.');
       return;
     }
 
-    const res = saveOfflineLicenseKey(cleanInput);
-    if (res.valid) {
-      setLicenseStatus(res);
-    } else {
-      setErrorMsg(res.errorMessage || 'کد لایسنس وارد شده نامعتبر است.');
+    setIsActivating(true);
+    try {
+      // 1. Activate directly on the Central Linux Server so ALL LAN clients are unlocked permanently
+      const res = await fetch('/api/license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseKey: cleanInput,
+          deviceId: getOrCreateDeviceId(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.valid && data.licenseInfo) {
+        cacheServerLicenseLocally(cleanInput, data.activatedDeviceId || deviceId);
+        setLicenseStatus(data.licenseInfo);
+        setIsActivating(false);
+        return;
+      }
+
+      // 2. Fallback check locally in case key was generated for local browser ID
+      const localRes = saveOfflineLicenseKey(cleanInput, deviceId);
+      if (localRes.valid) {
+        try {
+          await fetch('/api/license', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              licenseKey: cleanInput,
+              deviceId: localRes.deviceId,
+            }),
+          });
+        } catch {
+          // ignore
+        }
+        setLicenseStatus(localRes);
+      } else {
+        setErrorMsg(
+          data.errorMessage || localRes.errorMessage || 'کد لایسنس وارد شده نامعتبر است.'
+        );
+      }
+    } catch {
+      const localRes = saveOfflineLicenseKey(cleanInput, deviceId);
+      if (localRes.valid) {
+        setLicenseStatus(localRes);
+      } else {
+        setErrorMsg(localRes.errorMessage || 'کد لایسنس وارد شده نامعتبر است.');
+      }
+    } finally {
+      setIsActivating(false);
     }
   };
 
@@ -71,13 +230,14 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
           </div>
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1">
-              <span>قفل سخت‌افزاری سیستم (Offline Protection)</span>
+              <Server className="w-3 h-3" />
+              <span>قفل سخت‌افزاری سرور مرکزی (Central Server Protection)</span>
             </div>
             <h1 className="text-base sm:text-lg font-black text-white">
-              فعال‌سازی آفلاین سامانه حسابداری مَه
+              فعال‌سازی سرور مرکزی سامانه حسابداری مَه
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              این کامپیوتر هنوز فعال‌سازی نشده است. جهت بازگشایی برنامه، لایسنس اختصاصی این سیستم را وارد نمایید.
+              با یک‌بار فعال‌سازی روی این سرور، تمامی کلاینت‌های شبکه (IP) بدون نیاز به فعال‌سازی مجدد به همین دیتابیس متصل می‌شوند.
             </p>
           </div>
         </div>
@@ -89,9 +249,9 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-300 flex items-center gap-1.5">
                 <Cpu className="w-4 h-4 text-indigo-400" />
-                <span>۱. شناسه سخت‌افزاری این کامپیوتر (Device ID):</span>
+                <span>۱. شناسه سخت‌افزاری سرور مرکزی (Server ID):</span>
               </span>
-              <span className="text-[10px] text-slate-500">اختصاصی این دستگاه</span>
+              <span className="text-[10px] text-slate-500">یکپارچه برای کل شبکه</span>
             </div>
 
             <div className="flex items-center justify-between gap-2 bg-slate-900 border border-indigo-500/30 rounded-xl p-2.5">
@@ -114,14 +274,14 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5" />
-                    <span>کپی کد سیستم</span>
+                    <span>کپی کد سرور</span>
                   </>
                 )}
               </button>
             </div>
 
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              کد شناسایی بالا را کپی کرده و در فایل صدور لایسنس آفلاین وارد نمایید تا کلید دیجیتال مخصوص این کامپیوتر صادر شود.
+              کد شناسایی سرور بالا را کپی کرده و در فایل صدور لایسنس آفلاین وارد نمایید تا کلید دیجیتال مخصوص این سرور صادر شود.
             </p>
           </div>
 
@@ -129,7 +289,7 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
           <div className="space-y-2">
             <label className="block font-bold text-slate-200 flex items-center gap-1.5">
               <KeyRound className="w-4 h-4 text-emerald-400" />
-              <span>۲. کد لایسنس فعال‌سازی آفلاین (Offline License Key):</span>
+              <span>۲. کد لایسنس فعال‌سازی سرور (Offline License Key):</span>
             </label>
             <textarea
               rows={3}
@@ -151,13 +311,19 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
 
           <button
             type="submit"
-            className="w-full py-3 px-4 bg-gradient-to-l from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-black rounded-xl shadow-lg shadow-indigo-900/50 flex items-center justify-center gap-2 text-sm transition cursor-pointer"
+            disabled={isActivating}
+            className="w-full py-3 px-4 bg-gradient-to-l from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 disabled:opacity-60 text-white font-black rounded-xl shadow-lg shadow-indigo-900/50 flex items-center justify-center gap-2 text-sm transition cursor-pointer"
           >
             <ShieldCheck className="w-5 h-5" />
-            <span>بررسی امضای دیجیتال و فعال‌سازی دائمی سیستم</span>
+            <span>
+              {isActivating
+                ? 'در حال ثبت لایسنس روی سرور مرکزی...'
+                : 'بررسی امضای دیجیتال و فعال‌سازی دائمی سرور و شبکه'}
+            </span>
           </button>
         </form>
       </div>
     </div>
   );
 };
+
