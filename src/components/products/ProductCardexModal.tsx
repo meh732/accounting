@@ -86,23 +86,26 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
             {/* Product Meta */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded border border-slate-300 text-xs">
               <div>نام کالا: <strong>{product.title}</strong></div>
-              <div>گروه کالا: <span>{product.categoryTitle}</span></div>
+              <div>گروه کالا: <span>{product.categoryTitle || 'کالای عمومی'}</span></div>
               <div>واحد سنجش: <span>{product.unit}</span></div>
-              <div>نقطه سفارش بحرانی: <span className="font-mono">{product.minStockAlert || 0} {product.unit}</span></div>
+              <div>نقطه سفارش بحرانی: <span className="font-mono">{product.reorderPoint || 0} {product.unit}</span></div>
               <div>آخرین قیمت خرید: <span className="font-mono">{formatCurrency(product.buyPrice, settings.currency)}</span></div>
-              <div>قیمت مصوب فروش: <span className="font-mono">{formatCurrency(product.sellPrice, settings.currency)}</span></div>
+              <div>قیمت مصوب فروش: <span className="font-mono">{formatCurrency(product.salePrice, settings.currency)}</span></div>
+              {product.warehouseLocation && (
+                <div>محل نگهداری در انبار: <span className="font-bold">{product.warehouseLocation}</span></div>
+              )}
             </div>
 
             {/* Metrics */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
-                <div className="text-emerald-800 font-semibold">مجموع وارده به انبار (خرید/برگشت)</div>
+                <div className="text-emerald-800 font-semibold">مجموع وارده به انبار (خرید/برگشت/اضافه)</div>
                 <div className="text-sm font-bold font-mono text-emerald-900 mt-1">
                   {cardex.totalInQty} {product.unit}
                 </div>
               </div>
               <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-xs">
-                <div className="text-rose-800 font-semibold">مجموع صادره از انبار (فروش)</div>
+                <div className="text-rose-800 font-semibold">مجموع صادره از انبار (فروش/کسری)</div>
                 <div className="text-sm font-bold font-mono text-rose-900 mt-1">
                   {cardex.totalOutQty} {product.unit}
                 </div>
@@ -154,7 +157,12 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
                         {row.documentNumber}
                       </td>
                       <td className="py-2 px-3 border-l border-slate-200 font-medium text-slate-900">
-                        {row.documentType} {row.contactName ? `(${row.contactName})` : ''}
+                        <div>
+                          {row.documentType} {row.contactName ? `(${row.contactName})` : ''}
+                        </div>
+                        {row.notes && (
+                          <div className="text-[10px] text-slate-500 mt-0.5">{row.notes}</div>
+                        )}
                       </td>
                       <td className="py-2 px-2 text-center border-l border-slate-200 font-mono font-bold text-emerald-700">
                         {row.inQuantity > 0 ? row.inQuantity : '-'}

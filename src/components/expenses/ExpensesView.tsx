@@ -22,13 +22,14 @@ export const ExpensesView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
 
-  const expenseAccounts = chartOfAccounts.filter((a) => a.code.startsWith('5') || a.code.startsWith('6') || a.code.startsWith('8'));
+  const expenseAccounts = chartOfAccounts.filter((a) => a.code.startsWith('7') && a.level === 'moein');
 
   const filteredExpenses = expenses.filter((exp) => {
     const matchCat = selectedCategoryFilter === 'all' || exp.accountCode === selectedCategoryFilter;
+    const desc = exp.description || exp.title || '';
     const matchSearch =
       searchQuery === '' ||
-      exp.description.includes(searchQuery) ||
+      desc.includes(searchQuery) ||
       exp.accountTitle.includes(searchQuery) ||
       (exp.beneficiary && exp.beneficiary.includes(searchQuery)) ||
       (exp.trackingNumber && exp.trackingNumber.includes(searchQuery));
@@ -39,9 +40,7 @@ export const ExpensesView: React.FC = () => {
   const totalExpenseSum = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   const handleDelete = (exp: Expense) => {
-    if (window.confirm(`آیا از حذف هزینه "${exp.description}" به مبلغ ${formatCurrency(exp.amount, settings.currency)} اطمینان دارید؟`)) {
-      deleteExpense(exp.id);
-    }
+    deleteExpense(exp.id);
   };
 
   return (

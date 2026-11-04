@@ -42,18 +42,6 @@ export const OfflineActivationGate: React.FC<OfflineActivationGateProps> = ({ ch
       return;
     }
 
-    // Secret owner-only command to download the standalone HTML Keygen file
-    if (cleanInput === 'GET-KEYGEN-HTML') {
-      const a = document.createElement('a');
-      a.href = '/download/keygen';
-      a.download = 'Meh-Offline-Keygen.html';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setLicenseInput('');
-      return;
-    }
-
     const res = saveOfflineLicenseKey(cleanInput);
     if (res.valid) {
       setLicenseStatus(res);

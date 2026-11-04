@@ -12,30 +12,36 @@ interface ExpenseModalProps {
 export const ExpenseModal: React.FC<ExpenseModalProps> = ({ expenseToEdit, onClose }) => {
   const { chartOfAccounts, bankAccounts, addExpense, updateExpense, settings } = useAccounting();
 
-  // Filter expense accounts
-  const expenseAccounts = chartOfAccounts.filter((a) => a.type === 'expense' && a.level === 'moein');
+  // Filter expense accounts (Group 7: Operating, Administrative, Selling, Financial Expenses)
+  const expenseAccounts = chartOfAccounts.filter((a) => a.code.startsWith('7') && a.level === 'moein');
 
   const [date, setDate] = useState<string>(expenseToEdit?.date || getCurrentShamsiDate());
-  const [accountCode, setAccountCode] = useState<string>(expenseToEdit?.accountCode || expenseAccounts[0]?.code || '60101');
-  const [title, setTitle] = useState<string>(expenseToEdit?.title || '');
-  const [amount, setAmount] = useState<number>(expenseToEdit?.amount || 0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank'>(expenseToEdit?.paymentMethod || 'bank');
-  const [bankAccountId, setBankAccountId] = useState<string>(
-    expenseToEdit?.bankAccountId || bankAccounts[0]?.id || ''
+  const [accountCode, setAccountCode] = useState<string>(
+    expenseToEdit?.accountCode || expenseAccounts[0]?.code || '70201'
   );
-  const [trackingCode, setTrackingCode] = useState<string>(expenseToEdit?.trackingCode || '');
-  const [recipient, setRecipient] = useState<string>(expenseToEdit?.recipient || '');
+  const [title, setTitle] = useState<string>(expenseToEdit?.title || expenseToEdit?.description || '');
+  const [amount, setAmount] = useState<number>(expenseToEdit?.amount || 0);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank'>(
+    expenseToEdit?.paymentType === 'cash' ? 'cash' : 'bank'
+  );
+  const [bankAccountId, setBankAccountId] = useState<string>(
+    expenseToEdit?.sourceAccountId || bankAccounts[0]?.id || ''
+  );
+  const [trackingCode, setTrackingCode] = useState<string>(expenseToEdit?.trackingNumber || '');
+  const [recipient, setRecipient] = useState<string>(expenseToEdit?.beneficiary || '');
   const [description, setDescription] = useState<string>(expenseToEdit?.description || '');
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || amount <= 0) {
-      alert('لطفاً عنوان هزینه و مبلغ معتبر را وارد فرمایید.');
+      setErrorMsg('لطفاً عنوان هزینه و مبلغ معتبر بزرگ‌تر از صفر را وارد فرمایید.');
       return;
     }
 
     const acc = chartOfAccounts.find((a) => a.code === accountCode);
     const bankAcc = bankAccounts.find((b) => b.id === bankAccountId);
+    const finalDescription = description.trim() ? `${title.trim()} - ${description.trim()}` : title.trim();
 
     if (expenseToEdit) {
       updateExpense(expenseToEdit.id, {
@@ -44,12 +50,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ expenseToEdit, onClo
         accountTitle: acc?.title || 'هزینه عمومی',
         title: title.trim(),
         amount,
-        paymentMethod,
-        bankAccountId,
-        bankAccountTitle: bankAcc?.title || '',
-        trackingCode,
-        recipient,
-        description,
+        paymentType: paymentMethod,
+        sourceAccountId: bankAccountId,
+        sourceAccountTitle: bankAcc?.title || (paymentMethod === 'cash' ? 'صندوق نقدی' : 'بانک'),
+        trackingNumber: trackingCode.trim(),
+        beneficiary: recipient.trim(),
+        description: finalDescription,
       });
     } else {
       addExpense({
@@ -58,12 +64,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ expenseToEdit, onClo
         accountTitle: acc?.title || 'هزینه عمومی',
         title: title.trim(),
         amount,
-        paymentMethod,
-        bankAccountId,
-        bankAccountTitle: bankAcc?.title || '',
-        trackingCode,
-        recipient,
-        description,
+        paymentType: paymentMethod,
+        sourceAccountId: bankAccountId,
+        sourceAccountTitle: bankAcc?.title || (paymentMethod === 'cash' ? 'صندوق نقدی' : 'بانک'),
+        trackingNumber: trackingCode.trim(),
+        beneficiary: recipient.trim(),
+        description: finalDescription,
       });
     }
 
@@ -89,6 +95,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ expenseToEdit, onClo
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {errorMsg && (
+          <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-bold">
+            {errorMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div className="grid grid-cols-2 gap-3">

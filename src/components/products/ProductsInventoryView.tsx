@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
-import { Product, ProductCategory } from '../../types/accounting';
-import { formatCurrency } from '../../utils/dateUtils';
+import { Product } from '../../types/accounting';
+import { formatCurrency, getCurrentShamsiDate } from '../../utils/dateUtils';
 import { ProductCardexModal } from './ProductCardexModal';
 import {
   Package,
   Plus,
   Search,
-  Layers,
   FileText,
   Edit2,
   Trash2,
   X,
   AlertTriangle,
   Boxes,
-  Tag
+  Tag,
+  ClipboardCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const ProductsInventoryView: React.FC = () => {
@@ -24,8 +25,8 @@ export const ProductsInventoryView: React.FC = () => {
     addProduct,
     updateProduct,
     deleteProduct,
+    performStocktaking,
     addProductCategory,
-    deleteProductCategory,
     settings,
   } = useAccounting();
 
@@ -42,6 +43,14 @@ export const ProductsInventoryView: React.FC = () => {
   const [newCatCode, setNewCatCode] = useState('');
   const [newCatTitle, setNewCatTitle] = useState('');
 
+  // Stocktaking (انبارگردانی) Modal State
+  const [isStocktakingModalOpen, setIsStocktakingModalOpen] = useState(false);
+  const [stocktakingDate, setStocktakingDate] = useState<string>(getCurrentShamsiDate());
+  const [stocktakingNotes, setStocktakingNotes] = useState<string>('صورتجلسه شمارش فیزیکی و انبارگردانی دوره');
+  const [countedQuantities, setCountedQuantities] = useState<Record<string, number>>({});
+  const [countedReasons, setCountedReasons] = useState<Record<string, string>>({});
+  const [stocktakingBanner, setStocktakingBanner] = useState<string | null>(null);
+
   // Product Form State
   const [code, setCode] = useState('');
   const [barcode, setBarcode] = useState('');
@@ -56,10 +65,10 @@ export const ProductsInventoryView: React.FC = () => {
 
   const openAddProductModal = () => {
     setProductToEdit(null);
-    setCode(`PRD-${1000 + products.length + 1}`);
+    setCode(`PRD-${100 + products.length + 1}`);
     setBarcode('');
     setTitle('');
-    setCategoryId(productCategories[0]?.id || '');
+    setCategoryId(productCategories[0]?.id || 'default-general');
     setUnit('عدد');
     setBuyPrice(0);
     setSalePrice(0);
@@ -67,6 +76,48 @@ export const ProductsInventoryView: React.FC = () => {
     setReorderPoint(5);
     setDescription('');
     setIsProductModalOpen(true);
+  };
+
+  const openStocktakingModal = () => {
+    const initialCounts: Record<string, number> = {};
+    const initialReasons: Record<string, string> = {};
+    products.forEach((p) => {
+      initialCounts[p.id] = p.stockQuantity;
+      initialReasons[p.id] = '';
+    });
+    setCountedQuantities(initialCounts);
+    setCountedReasons(initialReasons);
+    setStocktakingDate(getCurrentShamsiDate());
+    setStocktakingNotes('صورتجلسه شمارش فیزیکی و انبارگردانی دوره');
+    setIsStocktakingModalOpen(true);
+  };
+
+  const handleConfirmStocktaking = (e: React.FormEvent) => {
+    e.preventDefault();
+    const adjustments = products
+      .map((p) => ({
+        productId: p.id,
+        countedQty: countedQuantities[p.id] ?? p.stockQuantity,
+        reason: countedReasons[p.id] || stocktakingNotes,
+      }))
+      .filter((adj) => {
+        const p = products.find((prd) => prd.id === adj.productId);
+        return p && adj.countedQty !== p.stockQuantity;
+      });
+
+    if (adjustments.length === 0) {
+      setIsStocktakingModalOpen(false);
+      return;
+    }
+
+    const vch = performStocktaking(adjustments, stocktakingDate, stocktakingNotes);
+    setIsStocktakingModalOpen(false);
+    setStocktakingBanner(
+      `انبارگردانی برای ${adjustments.length} قلم کالا با موفقیت ثبت شد${
+        vch ? ` و سند حسابداری تعدیل موجودی شماره #${vch.voucherNumber} صادر گردید.` : '.'
+      }`
+    );
+    setTimeout(() => setStocktakingBanner(null), 7000);
   };
 
   const openEditProductModal = (p: Product) => {
@@ -85,24 +136,37 @@ export const ProductsInventoryView: React.FC = () => {
   };
 
   const handleDeleteProduct = (p: Product) => {
-    if (window.confirm(`آیا از حذف کالای "${p.title}" اطمینان دارید؟`)) {
-      deleteProduct(p.id);
-    }
+    deleteProduct(p.id);
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !categoryId) return;
+    if (!title.trim()) return;
 
-    const cat = productCategories.find((c) => c.id === categoryId);
+    let finalCategoryId = categoryId;
+    let finalCategoryTitle = productCategories.find((c) => c.id === categoryId)?.title || '';
+
+    if (!finalCategoryId || finalCategoryId === 'default-general' || productCategories.length === 0) {
+      if (productCategories.length > 0) {
+        finalCategoryId = productCategories[0].id;
+        finalCategoryTitle = productCategories[0].title;
+      } else {
+        const createdCat = addProductCategory({
+          code: 'CAT-01',
+          title: 'کالاهای عمومی و تجاری',
+        });
+        finalCategoryId = createdCat.id;
+        finalCategoryTitle = createdCat.title;
+      }
+    }
 
     if (productToEdit) {
       updateProduct(productToEdit.id, {
         code,
         barcode,
         title: title.trim(),
-        categoryId,
-        categoryTitle: cat?.title || '',
+        categoryId: finalCategoryId,
+        categoryTitle: finalCategoryTitle,
         unit,
         buyPrice,
         salePrice,
@@ -115,11 +179,12 @@ export const ProductsInventoryView: React.FC = () => {
         code,
         barcode,
         title: title.trim(),
-        categoryId,
-        categoryTitle: cat?.title || '',
+        categoryId: finalCategoryId,
+        categoryTitle: finalCategoryTitle,
         unit,
         buyPrice,
         salePrice,
+        initialStock: stockQuantity,
         stockQuantity,
         reorderPoint,
         description,
@@ -151,7 +216,7 @@ export const ProductsInventoryView: React.FC = () => {
       p.title.includes(searchQuery) ||
       p.code.includes(searchQuery) ||
       (p.barcode && p.barcode.includes(searchQuery)) ||
-      p.categoryTitle.includes(searchQuery);
+      (p.categoryTitle && p.categoryTitle.includes(searchQuery));
 
     return matchCat && matchSearch;
   });
@@ -167,14 +232,14 @@ export const ProductsInventoryView: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Boxes className="w-5 h-5 text-amber-600" />
-            <span>مدیریت انبار، تعریف کالا، گروه‌بندی و کاردکس کالا</span>
+            <span>مدیریت انبار، تعریف کالا، انبارگردانی و کاردکس کالا</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            کنترل دقیق موجودی تعدادی و ریالی انبار، تعیین نقطه سفارش بحرانی و صدور کاردکس
+            کنترل دقیق موجودی تعدادی و ریالی انبار، انبارگردانی با سند تعدیل خودکار و صدور کاردکس
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openAddProductModal}
             id="btn-add-product"
@@ -182,6 +247,14 @@ export const ProductsInventoryView: React.FC = () => {
           >
             <Plus className="w-4 h-4" />
             <span>تعریف کالای جدید</span>
+          </button>
+          <button
+            onClick={openStocktakingModal}
+            id="btn-stocktaking"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition"
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            <span>انبارگردانی و تعدیل موجودی</span>
           </button>
           <button
             onClick={() => {
@@ -197,6 +270,18 @@ export const ProductsInventoryView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {stocktakingBanner && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-bold">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{stocktakingBanner}</span>
+          </div>
+          <button onClick={() => setStocktakingBanner(null)} className="text-emerald-600 hover:text-emerald-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -424,11 +509,15 @@ export const ProductsInventoryView: React.FC = () => {
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium"
                     required
                   >
-                    {productCategories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.title}
-                      </option>
-                    ))}
+                    {productCategories.length === 0 ? (
+                      <option value="default-general">کالاهای عمومی و تجاری (ایجاد خودکار)</option>
+                    ) : (
+                      productCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.title}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
@@ -568,6 +657,169 @@ export const ProductsInventoryView: React.FC = () => {
                 >
                   ثبت گروه کالا
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Stocktaking (انبارگردانی) Modal */}
+      {isStocktakingModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                  <ClipboardCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    انبارگردانی، شمارش فیزیکی و صدور سند تعدیل موجودی انبار
+                  </h3>
+                  <span className="text-[11px] text-slate-500">
+                    مقایسه موجودی سیستم با شمارش فیزیکی انبار و ثبت خودکار کسری یا اضافات در کاردکس و حسابداری
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsStocktakingModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmStocktaking} className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">تاریخ صورتجلسه انبارگردانی</label>
+                  <input
+                    type="text"
+                    value={stocktakingDate}
+                    onChange={(e) => setStocktakingDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-center font-bold"
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">شرح کلی صورتجلسه انبارگردانی</label>
+                  <input
+                    type="text"
+                    value={stocktakingNotes}
+                    onChange={(e) => setStocktakingNotes(e.target.value)}
+                    placeholder="مثال: شمارش فیزیکی پایان ماه انبار مرکزی..."
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-24 font-mono">کد کالا</th>
+                      <th className="py-2.5 px-3">نام کالا</th>
+                      <th className="py-2.5 px-3 text-center w-28">موجودی سیستم</th>
+                      <th className="py-2.5 px-3 text-center w-32">شمارش فیزیکی</th>
+                      <th className="py-2.5 px-3 text-center w-28">مغایرت (اضافه/کسری)</th>
+                      <th className="py-2.5 px-3 text-left w-36">ارزش ریالی مغایرت</th>
+                      <th className="py-2.5 px-3 min-w-[160px]">علت مغایرت / توضیح</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {products.map((p) => {
+                      const counted = countedQuantities[p.id] ?? p.stockQuantity;
+                      const diff = counted - p.stockQuantity;
+                      const diffVal = diff * (p.buyPrice || 0);
+
+                      return (
+                        <tr key={p.id} className={diff !== 0 ? 'bg-indigo-50/40' : 'hover:bg-slate-50'}>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.code}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-900">{p.title}</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-semibold text-slate-600">
+                            {p.stockQuantity} {p.unit}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <input
+                              type="number"
+                              min={0}
+                              value={counted}
+                              onChange={(e) =>
+                                setCountedQuantities((prev) => ({
+                                  ...prev,
+                                  [p.id]: Math.max(0, parseFloat(e.target.value) || 0),
+                                }))
+                              }
+                              className="w-24 bg-white border border-slate-300 focus:border-indigo-600 rounded-lg p-1.5 font-mono font-bold text-center"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold">
+                            {diff === 0 ? (
+                              <span className="text-slate-400">بدون مغایرت</span>
+                            ) : diff > 0 ? (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                +{diff} اضافه
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
+                                {diff} کسری
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-left font-mono font-bold">
+                            {diff === 0 ? (
+                              <span className="text-slate-400">0</span>
+                            ) : (
+                              <span className={diff > 0 ? 'text-emerald-700' : 'text-rose-700'}>
+                                {diff > 0 ? '+' : ''}
+                                {formatCurrency(diffVal, settings.currency)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              value={countedReasons[p.id] || ''}
+                              onChange={(e) =>
+                                setCountedReasons((prev) => ({
+                                  ...prev,
+                                  [p.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="توضیح کسری یا اضافه..."
+                              className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                <div className="text-slate-600">
+                  تعداد اقلام دارای مغایرت:{' '}
+                  <strong className="font-mono text-indigo-700">
+                    {products.filter((p) => (countedQuantities[p.id] ?? p.stockQuantity) !== p.stockQuantity).length}
+                  </strong>{' '}
+                  قلم کالا
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsStocktakingModalOpen(false)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md transition"
+                  >
+                    ثبت صورتجلسه انبارگردانی و صدور سند تعدیل
+                  </button>
+                </div>
               </div>
             </form>
           </div>

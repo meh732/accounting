@@ -13,7 +13,14 @@ import {
 export interface ContactCardexRow {
   id: string;
   date: string;
-  documentType: 'سند افتتاحیه' | 'فاکتور فروش' | 'فاکتور خرید' | 'مرجوعی فروش' | 'مرجوعی خرید' | 'دریافت/پرداخت' | 'سند حسابداری';
+  documentType:
+    | 'سند افتتاحیه'
+    | 'فاکتور فروش'
+    | 'فاکتور خرید'
+    | 'مرجوعی فروش'
+    | 'مرجوعی خرید'
+    | 'دریافت/پرداخت'
+    | 'سند حسابداری';
   documentNumber: string | number;
   description: string;
   debit: number;   // بدهکار (افزایش طلب ما از مشتری یا کاهش بدهی ما به تامین‌کننده)
@@ -29,7 +36,13 @@ export function calculateContactCardex(
   expenses: Expense[],
   financialTransactions: FinancialTransaction[] = [],
   cheques: ChequeRecord[] = []
-): { rows: ContactCardexRow[]; totalDebit: number; totalCredit: number; finalBalance: number; finalBalanceType: 'بدهکار' | 'بستانکار' | 'تسویه' } {
+): {
+  rows: ContactCardexRow[];
+  totalDebit: number;
+  totalCredit: number;
+  finalBalance: number;
+  finalBalanceType: 'بدهکار' | 'بستانکار' | 'تسویه';
+} {
   let rows: ContactCardexRow[] = [];
 
   // 1. Initial balance
@@ -52,6 +65,12 @@ export function calculateContactCardex(
   invoices
     .filter((inv) => inv.contactId === contact.id)
     .forEach((inv) => {
+      const totalPaidAtInvoice =
+        (inv.settlement?.cashPayments || []).reduce((s, c) => s + (c.amount || 0), 0) +
+        (inv.settlement?.bankPayments || []).reduce((s, b) => s + (b.amount || 0), 0) +
+        (inv.settlement?.chequePayments || []).reduce((s, ch) => s + (ch.amount || 0), 0) +
+        (inv.settlement?.discountAmount || 0);
+
       if (inv.type === 'sales') {
         // فاکتور فروش: مشتری بدهکار می‌شود به کل مبلغ
         rows.push({
@@ -67,12 +86,6 @@ export function calculateContactCardex(
         });
 
         // تسویه‌های نقدی / بانکی / چک در زمان فاکتور باعث بستانکار شدن مشتری می‌شود
-        const totalPaidAtInvoice =
-          inv.settlement.cashPayments.reduce((s, c) => s + c.amount, 0) +
-          inv.settlement.bankPayments.reduce((s, b) => s + b.amount, 0) +
-          inv.settlement.chequePayments.reduce((s, ch) => s + ch.amount, 0) +
-          inv.settlement.discountAmount;
-
         if (totalPaidAtInvoice > 0) {
           rows.push({
             id: `pay-${inv.id}`,
@@ -101,20 +114,14 @@ export function calculateContactCardex(
         });
 
         // تسویه پرداخت شده به تامین کننده
-        const totalPaidToSupplier =
-          inv.settlement.cashPayments.reduce((s, c) => s + c.amount, 0) +
-          inv.settlement.bankPayments.reduce((s, b) => s + b.amount, 0) +
-          inv.settlement.chequePayments.reduce((s, ch) => s + ch.amount, 0) +
-          inv.settlement.discountAmount;
-
-        if (totalPaidToSupplier > 0) {
+        if (totalPaidAtInvoice > 0) {
           rows.push({
             id: `pay-${inv.id}`,
             date: inv.date,
             documentType: 'دریافت/پرداخت',
             documentNumber: inv.invoiceNumber,
             description: `پرداخت وجه فاکتور خرید ${inv.invoiceNumber} (بانک/چک/نقد)`,
-            debit: totalPaidToSupplier,
+            debit: totalPaidAtInvoice,
             credit: 0,
             balance: 0,
             balanceType: 'بدهکار',
@@ -133,6 +140,20 @@ export function calculateContactCardex(
           balance: 0,
           balanceType: 'بستانکار',
         });
+
+        if (totalPaidAtInvoice > 0) {
+          rows.push({
+            id: `ret-pay-${inv.id}`,
+            date: inv.date,
+            documentType: 'دریافت/پرداخت',
+            documentNumber: inv.invoiceNumber,
+            description: `استرداد وجه مرجوعی فروش ${inv.invoiceNumber}`,
+            debit: totalPaidAtInvoice,
+            credit: 0,
+            balance: 0,
+            balanceType: 'بدهکار',
+          });
+        }
       } else if (inv.type === 'purchase_return') {
         // مرجوعی خرید: بدهکار شدن تامین‌کننده
         rows.push({
@@ -146,12 +167,32 @@ export function calculateContactCardex(
           balance: 0,
           balanceType: 'بدهکار',
         });
+
+        if (totalPaidAtInvoice > 0) {
+          rows.push({
+            id: `ret-pay-${inv.id}`,
+            date: inv.date,
+            documentType: 'دریافت/پرداخت',
+            documentNumber: inv.invoiceNumber,
+            description: `دریافت وجه بابت مرجوعی خرید ${inv.invoiceNumber}`,
+            debit: 0,
+            credit: totalPaidAtInvoice,
+            balance: 0,
+            balanceType: 'بستانکار',
+          });
+        }
       }
     });
 
   // 3. Treasury receipts/payments, standalone cheques, and manual journal vouchers with this contact
   vouchers
-    .filter((v) => v.sourceType !== 'invoice' && v.type !== 'closing' && v.type !== 'opening')
+    .filter(
+      (v) =>
+        v.sourceType !== 'invoice' &&
+        v.sourceType !== 'stocktaking' &&
+        v.type !== 'closing' &&
+        v.type !== 'opening'
+    )
     .forEach((v) => {
       v.items.forEach((item) => {
         const isMatchedAuto =
@@ -167,8 +208,12 @@ export function calculateContactCardex(
           !v.isAutoGenerated &&
           ((item.contactId && item.contactId === contact.id) ||
             (item.tafsiliId && item.tafsiliId === contact.id) ||
-            (item.tafsiliTitle && item.tafsiliTitle.includes(contact.name)) ||
-            (item.description && item.description.includes(contact.name) && !item.accountCode.startsWith('101')));
+            (item.tafsiliTitle && item.tafsiliTitle === contact.name) ||
+            (item.description &&
+              item.description.includes(contact.name) &&
+              (item.accountCode === '10301' ||
+                item.accountCode === '30101' ||
+                item.accountCode.startsWith('403'))));
 
         if (isMatchedAuto || isMatchedManual) {
           const docType: ContactCardexRow['documentType'] =
@@ -223,9 +268,16 @@ export function calculateContactCardex(
       }
     });
 
-  // 5. Fallback for standalone cheques if autoGenerateVouchers was disabled
+  // 5. Fallback for standalone cheques ONLY (exclude invoice cheques which were already counted in Step 2!)
   cheques
-    .filter((ch) => ch.contactId === contact.id && !voucherSourceIds.has(ch.id))
+    .filter(
+      (ch) =>
+        ch.contactId === contact.id &&
+        !ch.invoiceId &&
+        !ch.id.startsWith('chq-inv-') &&
+        !voucherSourceIds.has(ch.id) &&
+        ch.status !== 'returned'
+    )
     .forEach((ch) => {
       const isReceivable = ch.type === 'receive';
       rows.push({
@@ -304,85 +356,60 @@ export function calculateBankCardex(
     });
   }
 
-  // Bank receipts in Sales invoices
+  // Bank receipts & payments in Invoices
   invoices.forEach((inv) => {
-    if (inv.type === 'sales') {
-      if (bank.type === 'cash') {
-        inv.settlement.cashPayments
-          .filter((c) => c.cashId === bank.id)
-          .forEach((c) => {
-            rows.push({
-              id: `sale-cash-${inv.id}`,
-              date: inv.date,
-              documentType: 'فروش نقدی',
-              documentNumber: inv.invoiceNumber,
-              description: `دریافت نقد فاکتور فروش شماره ${inv.invoiceNumber} - ${inv.contactName}`,
-              inflow: c.amount,
-              outflow: 0,
-              balance: 0,
-            });
+    const isInflowInvoice = inv.type === 'sales' || inv.type === 'purchase_return';
+    if (bank.type === 'cash') {
+      (inv.settlement?.cashPayments || [])
+        .filter((c) => c.cashId === bank.id || c.cashTitle === bank.title)
+        .forEach((c) => {
+          rows.push({
+            id: `inv-cash-${inv.id}-${c.cashId}`,
+            date: inv.date,
+            documentType: isInflowInvoice ? 'دریافت نقد فاکتور' : 'پرداخت نقد فاکتور',
+            documentNumber: inv.invoiceNumber,
+            description: `${isInflowInvoice ? 'دریافت' : 'پرداخت'} نقد فاکتور شماره ${inv.invoiceNumber} - ${inv.contactName}`,
+            inflow: isInflowInvoice ? c.amount : 0,
+            outflow: isInflowInvoice ? 0 : c.amount,
+            balance: 0,
           });
-      } else {
-        inv.settlement.bankPayments
-          .filter((b) => b.bankId === bank.id)
-          .forEach((b) => {
-            rows.push({
-              id: `sale-bank-${inv.id}`,
-              date: inv.date,
-              documentType: bank.type === 'pos' ? 'تراکنش کارتخوان' : 'واریز بانکی',
-              documentNumber: inv.invoiceNumber,
-              description: `دریافت وجه فاکتور فروش شماره ${inv.invoiceNumber} - ${inv.contactName}${b.trackingCode ? ' (کد: ' + b.trackingCode + ')' : ''}`,
-              inflow: b.amount,
-              outflow: 0,
-              balance: 0,
-            });
+        });
+    } else {
+      (inv.settlement?.bankPayments || [])
+        .filter((b) => b.bankId === bank.id || b.bankTitle === bank.title)
+        .forEach((b) => {
+          rows.push({
+            id: `inv-bank-${inv.id}-${b.bankId}`,
+            date: inv.date,
+            documentType: isInflowInvoice
+              ? bank.type === 'pos'
+                ? 'تراکنش کارتخوان'
+                : 'واریز بانکی فاکتور'
+              : 'حواله بانکی فاکتور',
+            documentNumber: inv.invoiceNumber,
+            description: `${isInflowInvoice ? 'دریافت' : 'پرداخت'} وجه فاکتور شماره ${inv.invoiceNumber} - ${inv.contactName}${b.trackingCode ? ' (کد: ' + b.trackingCode + ')' : ''}`,
+            inflow: isInflowInvoice ? b.amount : 0,
+            outflow: isInflowInvoice ? 0 : b.amount,
+            balance: 0,
           });
-      }
-    } else if (inv.type === 'purchase') {
-      if (bank.type === 'cash') {
-        inv.settlement.cashPayments
-          .filter((c) => c.cashId === bank.id)
-          .forEach((c) => {
-            rows.push({
-              id: `pur-cash-${inv.id}`,
-              date: inv.date,
-              documentType: 'پرداخت نقد خرید',
-              documentNumber: inv.invoiceNumber,
-              description: `پرداخت نقد فاکتور خرید شماره ${inv.invoiceNumber} - ${inv.contactName}`,
-              inflow: 0,
-              outflow: c.amount,
-              balance: 0,
-            });
-          });
-      } else {
-        inv.settlement.bankPayments
-          .filter((b) => b.bankId === bank.id)
-          .forEach((b) => {
-            rows.push({
-              id: `pur-bank-${inv.id}`,
-              date: inv.date,
-              documentType: 'حواله خرید',
-              documentNumber: inv.invoiceNumber,
-              description: `پرداخت حواله فاکتور خرید شماره ${inv.invoiceNumber} - ${inv.contactName}${b.trackingCode ? ' (کد: ' + b.trackingCode + ')' : ''}`,
-              inflow: 0,
-              outflow: b.amount,
-              balance: 0,
-            });
-          });
-      }
+        });
     }
   });
 
   // Expenses paid from this account
   expenses
-    .filter((exp) => exp.sourceAccountId === bank.id)
+    .filter(
+      (exp) =>
+        exp.sourceAccountId === bank.id ||
+        (!exp.sourceAccountId && exp.sourceAccountTitle === bank.title)
+    )
     .forEach((exp) => {
       rows.push({
         id: `exp-${exp.id}`,
         date: exp.date,
         documentType: 'ثبت هزینه',
         documentNumber: exp.expenseNumber,
-        description: `${exp.accountTitle} - ${exp.description}${exp.beneficiary ? ' (به: ' + exp.beneficiary + ')' : ''}`,
+        description: `${exp.accountTitle} - ${exp.description || exp.title || ''}${exp.beneficiary ? ' (به: ' + exp.beneficiary + ')' : ''}`,
         inflow: 0,
         outflow: exp.amount,
         balance: 0,
@@ -391,7 +418,14 @@ export function calculateBankCardex(
 
   // Treasury receipts, payments, transfers, cheque clearances, and manual vouchers involving this bank/cash
   vouchers
-    .filter((v) => v.sourceType !== 'invoice' && v.sourceType !== 'expense' && v.type !== 'closing' && v.type !== 'opening')
+    .filter(
+      (v) =>
+        v.sourceType !== 'invoice' &&
+        v.sourceType !== 'expense' &&
+        v.sourceType !== 'stocktaking' &&
+        v.type !== 'closing' &&
+        v.type !== 'opening'
+    )
     .forEach((v) => {
       v.items.forEach((item) => {
         const isMatchedAuto =
@@ -527,6 +561,7 @@ export interface ProductCardexRow {
   documentType: string;
   documentNumber: string | number;
   contactName: string;
+  notes?: string;
   inQuantity: number;
   inUnitPrice: number;
   inTotalPrice: number;
@@ -540,29 +575,55 @@ export interface ProductCardexRow {
 export function calculateProductCardex(
   product: Product,
   invoices: Invoice[]
-): { rows: ProductCardexRow[]; totalInQty: number; totalOutQty: number; currentStock: number; currentStockValue: number } {
+): {
+  rows: ProductCardexRow[];
+  totalInQty: number;
+  totalOutQty: number;
+  currentStock: number;
+  currentStockValue: number;
+} {
   let rows: ProductCardexRow[] = [];
 
-  // Initial stock
-  if (product.initialStock > 0) {
+  // Calculate net movement from invoices and stockAdjustments to handle legacy products where initialStock wasn't explicitly set
+  let invoiceAndAdjDelta = 0;
+  invoices.forEach((inv) => {
+    const item = inv.items.find((i) => i.productId === product.id);
+    if (!item) return;
+    if (inv.type === 'purchase' || inv.type === 'sales_return') {
+      invoiceAndAdjDelta += item.quantity;
+    } else if (inv.type === 'sales' || inv.type === 'purchase_return') {
+      invoiceAndAdjDelta -= item.quantity;
+    }
+  });
+  (product.stockAdjustments || []).forEach((adj) => {
+    invoiceAndAdjDelta += adj.diffQty;
+  });
+
+  const effectiveInitialStock =
+    product.initialStock !== undefined && product.initialStock !== null
+      ? product.initialStock
+      : Math.max(0, product.stockQuantity - invoiceAndAdjDelta);
+
+  // 1. Initial stock
+  if (effectiveInitialStock > 0) {
     rows.push({
       id: 'init-stock',
       date: '1403/01/01',
       documentType: 'موجودی اول دوره',
       documentNumber: '-',
       contactName: 'انبار مرکزی',
-      inQuantity: product.initialStock,
+      inQuantity: effectiveInitialStock,
       inUnitPrice: product.buyPrice,
-      inTotalPrice: product.initialStock * product.buyPrice,
+      inTotalPrice: effectiveInitialStock * product.buyPrice,
       outQuantity: 0,
       outUnitPrice: 0,
       outTotalPrice: 0,
-      remainingQuantity: product.initialStock,
-      remainingValue: product.initialStock * product.buyPrice,
+      remainingQuantity: effectiveInitialStock,
+      remainingValue: effectiveInitialStock * product.buyPrice,
     });
   }
 
-  // Purchases, Sales, and Returns
+  // 2. Purchases, Sales, and Returns
   invoices.forEach((inv) => {
     const item = inv.items.find((i) => i.productId === product.id);
     if (!item) return;
@@ -632,6 +693,31 @@ export function calculateProductCardex(
         remainingValue: 0,
       });
     }
+  });
+
+  // 3. Stocktaking Adjustments (انبارگردانی - اضافه و کسری انبار)
+  (product.stockAdjustments || []).forEach((adj, idx) => {
+    const isSurplus = adj.diffQty > 0;
+    const absQty = Math.abs(adj.diffQty);
+    if (absQty === 0) return;
+    const unitPrice = adj.unitPrice || adj.unitCost || product.buyPrice || 0;
+
+    rows.push({
+      id: `adj-${adj.id || idx}`,
+      date: adj.date,
+      documentType: isSurplus ? 'انبارگردانی (اضافه انبار)' : 'انبارگردانی (کسری انبار)',
+      documentNumber: adj.voucherId ? adj.voucherId.replace('vch-', '') : `ADJ-${idx + 1}`,
+      contactName: adj.reason || 'شمارش فیزیکی انبار',
+      notes: adj.reason,
+      inQuantity: isSurplus ? absQty : 0,
+      inUnitPrice: isSurplus ? unitPrice : 0,
+      inTotalPrice: isSurplus ? absQty * unitPrice : 0,
+      outQuantity: !isSurplus ? absQty : 0,
+      outUnitPrice: !isSurplus ? unitPrice : 0,
+      outTotalPrice: !isSurplus ? absQty * unitPrice : 0,
+      remainingQuantity: 0,
+      remainingValue: 0,
+    });
   });
 
   rows.sort((a, b) => a.date.localeCompare(b.date));
@@ -760,6 +846,7 @@ export function calculateProfitAndLoss(
   salesDiscounts: number;
   netSales: number;
   cogs: number;
+  inventoryAdjustmentNet: number; // مثبت = اضافه انبار (کاهش بهای تمام شده)، منفی = کسری انبار (افزایش هزینه)
   grossProfit: number;
   totalOperatingExpenses: number;
   expenseDetails: { category: string; amount: number }[];
@@ -771,11 +858,26 @@ export function calculateProfitAndLoss(
 
   // 2. Sales Returns
   const salesReturnInvoices = invoices.filter((i) => i.type === 'sales_return');
-  const salesReturns = salesReturnInvoices.reduce((sum, inv) => sum + inv.subTotal, 0);
+  const salesReturns = salesReturnInvoices.reduce(
+    (sum, inv) =>
+      sum +
+      Math.max(
+        0,
+        inv.subTotal -
+          (inv.totalItemsDiscount || 0) -
+          (inv.totalInvoiceDiscount || 0) -
+          (inv.settlement?.discountAmount || 0)
+      ),
+    0
+  );
 
   // 3. Sales Discounts
   const salesDiscounts = salesInvoices.reduce(
-    (sum, inv) => sum + inv.totalItemsDiscount + inv.totalInvoiceDiscount + inv.settlement.discountAmount,
+    (sum, inv) =>
+      sum +
+      (inv.totalItemsDiscount || 0) +
+      (inv.totalInvoiceDiscount || 0) +
+      (inv.settlement?.discountAmount || 0),
     0
   );
 
@@ -787,25 +889,34 @@ export function calculateProfitAndLoss(
   salesInvoices.forEach((inv) => {
     inv.items.forEach((item) => {
       const prd = products.find((p) => p.id === item.productId);
-      const buyPrice = prd ? prd.buyPrice : item.unitPrice * 0.75;
+      const buyPrice = prd && prd.buyPrice > 0 ? prd.buyPrice : item.unitPrice * 0.75;
       cogs += item.quantity * buyPrice;
     });
   });
   salesReturnInvoices.forEach((inv) => {
     inv.items.forEach((item) => {
       const prd = products.find((p) => p.id === item.productId);
-      const buyPrice = prd ? prd.buyPrice : item.unitPrice * 0.75;
-      cogs -= item.quantity * buyPrice;
+      const buyPrice = prd && prd.buyPrice > 0 ? prd.buyPrice : item.unitPrice * 0.75;
+      cogs = Math.max(0, cogs - item.quantity * buyPrice);
     });
   });
 
-  // 6. Gross Profit
-  const grossProfit = netSales - cogs;
+  // 5b. Stocktaking Adjustments (اضافات و کسری انبارگردانی)
+  let inventoryAdjustmentNet = 0;
+  products.forEach((prd) => {
+    (prd.stockAdjustments || []).forEach((adj) => {
+      inventoryAdjustmentNet += adj.diffQty * (adj.unitPrice || adj.unitCost || prd.buyPrice || 0);
+    });
+  });
+
+  // 6. Gross Profit (شامل اثر تعدیلات انبارگردانی)
+  const grossProfit = netSales - cogs + inventoryAdjustmentNet;
 
   // 7. Operating Expenses
   const expCategoryMap = new Map<string, number>();
   expenses.forEach((exp) => {
-    expCategoryMap.set(exp.accountTitle, (expCategoryMap.get(exp.accountTitle) || 0) + exp.amount);
+    const catTitle = exp.accountTitle || 'هزینه‌های عمومی';
+    expCategoryMap.set(catTitle, (expCategoryMap.get(catTitle) || 0) + exp.amount);
   });
 
   const expenseDetails = Array.from(expCategoryMap.entries()).map(([category, amount]) => ({
@@ -823,6 +934,7 @@ export function calculateProfitAndLoss(
     salesDiscounts,
     netSales,
     cogs,
+    inventoryAdjustmentNet,
     grossProfit,
     totalOperatingExpenses,
     expenseDetails,

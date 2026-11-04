@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { BankAccount, BankAccountType } from '../../types/accounting';
 import { calculateBankCardex } from '../../utils/financialCalculations';
-import { formatCurrency } from '../../utils/dateUtils';
+import { formatCurrency, getCurrentShamsiDate } from '../../utils/dateUtils';
 import { BankCardexModal } from './BankCardexModal';
 import {
   Landmark,
@@ -13,7 +13,10 @@ import {
   Edit2,
   Trash2,
   X,
-  Wallet
+  Wallet,
+  Scale,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const BankAndCashView: React.FC = () => {
@@ -22,6 +25,8 @@ export const BankAndCashView: React.FC = () => {
     addBankAccount,
     updateBankAccount,
     deleteBankAccount,
+    addExpense,
+    addVoucher,
     invoices,
     expenses,
     vouchers,
@@ -33,6 +38,12 @@ export const BankAndCashView: React.FC = () => {
   const [activeTypeTab, setActiveTypeTab] = useState<BankAccountType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccountForCardex, setSelectedAccountForCardex] = useState<BankAccount | null>(null);
+
+  // Bank Reconciliation (مغایرت‌گیری بانکی) Modal State
+  const [reconcileAccount, setReconcileAccount] = useState<BankAccount | null>(null);
+  const [bankStatementBalance, setBankStatementBalance] = useState<number>(0);
+  const [reconcileNote, setReconcileNote] = useState<string>('کارمزد خدمات بانکی و رفع مغایرت صورتحساب');
+  const [reconcileSuccessMsg, setReconcileSuccessMsg] = useState<string | null>(null);
 
   // Modal State for Add / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,6 +58,70 @@ export const BankAndCashView: React.FC = () => {
   const [shebaNumber, setShebaNumber] = useState('');
   const [branchName, setBranchName] = useState('');
   const [initialBalance, setInitialBalance] = useState<number>(0);
+
+  const openReconcileModal = (acc: BankAccount) => {
+    const cardex = calculateBankCardex(acc, invoices, expenses, vouchers, financialTransactions, cheques);
+    setReconcileAccount(acc);
+    setBankStatementBalance(cardex.currentBalance);
+    setReconcileNote('کارمزد خدمات بانکی / تعدیل مغایرت صورتحساب بانک');
+  };
+
+  const handleRecordBankReconciliationAdjustment = (diffAmount: number) => {
+    if (!reconcileAccount || diffAmount === 0) return;
+    const absDiff = Math.abs(diffAmount);
+
+    if (diffAmount < 0) {
+      // Bank statement is lower than book balance -> record bank fee / expense (70401)
+      addExpense({
+        date: getCurrentShamsiDate(),
+        accountCode: '70401',
+        accountTitle: 'کارمزد خدمات بانکی و دستگاه پوز',
+        title: reconcileNote || 'کارمزد بانکی طبق مغایرت‌گیری',
+        amount: absDiff,
+        paymentType: reconcileAccount.type === 'cash' ? 'cash' : 'bank',
+        sourceAccountId: reconcileAccount.id,
+        sourceAccountTitle: reconcileAccount.title,
+        beneficiary: reconcileAccount.bankName || 'بانک',
+        trackingNumber: `REC-${Date.now().toString().slice(-5)}`,
+        description: `${reconcileNote} (رفع مغایرت صورتحساب ${reconcileAccount.title})`,
+      });
+    } else {
+      // Bank statement is higher than book balance -> record bank interest / revenue (50301)
+      addVoucher({
+        date: getCurrentShamsiDate(),
+        referenceNumber: `REC-${Date.now().toString().slice(-5)}`,
+        description: `ثبت سود سپرده / واریزی انتقالی بابت رفع مغایرت بانکی (${reconcileAccount.title})`,
+        type: 'manual',
+        items: [
+          {
+            id: `vi-rec-deb-${Date.now()}`,
+            accountCode: reconcileAccount.type === 'cash' ? '10101' : '10102',
+            accountTitle: reconcileAccount.type === 'cash' ? 'صندوق‌ها' : 'حساب‌های بانکی ریالی',
+            tafsiliId: reconcileAccount.id,
+            tafsiliTitle: reconcileAccount.title,
+            description: `${reconcileNote} - افزایش موجودی طبق صورتحساب بانک`,
+            debit: absDiff,
+            credit: 0,
+          },
+          {
+            id: `vi-rec-crd-${Date.now()}`,
+            accountCode: '50301',
+            accountTitle: 'سود سپرده‌های بانکی',
+            tafsiliTitle: reconcileAccount.title,
+            description: `سود سپرده / تعدیل مثبت مغایرت بانکی`,
+            debit: 0,
+            credit: absDiff,
+          },
+        ],
+      });
+    }
+
+    setReconcileSuccessMsg(
+      `سند رفع مغایرت بانکی به مبلغ ${formatCurrency(absDiff, settings.currency)} برای «${reconcileAccount.title}» با موفقیت ثبت شد و موجودی دفاتر با صورتحساب بانک تراز گردید.`
+    );
+    setReconcileAccount(null);
+    setTimeout(() => setReconcileSuccessMsg(null), 7000);
+  };
 
   const openAddModal = (defaultType: BankAccountType = 'bank') => {
     setAccountToEdit(null);
@@ -75,9 +150,7 @@ export const BankAndCashView: React.FC = () => {
   };
 
   const handleDelete = (acc: BankAccount) => {
-    if (window.confirm(`آیا از حذف حساب "${acc.title}" اطمینان دارید؟`)) {
-      deleteBankAccount(acc.id);
-    }
+    deleteBankAccount(acc.id);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -145,14 +218,24 @@ export const BankAndCashView: React.FC = () => {
         <div>
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Landmark className="w-4 h-4 text-emerald-600" />
-            <span>مدیریت نقد و بانک، صندوق‌ها و پایانه‌های فروشگاهی (POS)</span>
+            <span>مدیریت نقد و بانک، صندوق‌ها، کاردکس و مغایرت‌گیری بانکی</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            کنترل دقیق موجودی لحظه‌ای، گزارش گردش و کاردکس بانک و تسویه حساب‌ها
+            کنترل دقیق موجودی لحظه‌ای، گزارش گردش و کاردکس بانک و مغایرت‌گیری با صورتحساب بانک
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {bankAccounts.length > 0 && (
+            <button
+              onClick={() => openReconcileModal(bankAccounts[0])}
+              id="btn-bank-reconciliation"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+            >
+              <Scale className="w-3.5 h-3.5" />
+              <span>مغایرت‌گیری بانکی</span>
+            </button>
+          )}
           <button
             onClick={() => openAddModal('bank')}
             id="btn-add-bank"
@@ -171,6 +254,18 @@ export const BankAndCashView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {reconcileSuccessMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-bold">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{reconcileSuccessMsg}</span>
+          </div>
+          <button onClick={() => setReconcileSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -315,6 +410,14 @@ export const BankAndCashView: React.FC = () => {
                         >
                           <FileText className="w-3 h-3" />
                           <span>کاردکس</span>
+                        </button>
+                        <button
+                          onClick={() => openReconcileModal(acc)}
+                          title="مغایرت‌گیری صورتحساب بانک"
+                          className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-xs font-semibold transition"
+                        >
+                          <Scale className="w-3 h-3" />
+                          <span>مغایرت</span>
                         </button>
                         <button
                           onClick={() => openEditModal(acc)}
@@ -472,6 +575,179 @@ export const BankAndCashView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Bank Reconciliation (مغایرت‌گیری بانکی) Modal */}
+      {reconcileAccount && (() => {
+        const bookCardex = calculateBankCardex(
+          reconcileAccount,
+          invoices,
+          expenses,
+          vouchers,
+          financialTransactions,
+          cheques
+        );
+        const bookBalance = bookCardex.currentBalance;
+        const diffAmount = bankStatementBalance - bookBalance;
+        const pendingReceiveCheques = cheques.filter((c) => c.type === 'receive' && c.status === 'pending');
+        const pendingPaymentCheques = cheques.filter((c) => c.type === 'payment' && c.status === 'pending');
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-5 border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-4 text-xs">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">
+                      فرم مغایرت‌گیری بانکی و تطبیق صورتحساب بانک
+                    </h3>
+                    <span className="text-[11px] text-slate-500">
+                      مقایسه مانده دفاتر حسابداری با مانده واقعی صورتحساب بانک و ثبت خودکار سند رفع مغایرت
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setReconcileAccount(null)} className="text-slate-400 hover:text-slate-700">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">انتخاب حساب بانکی / صندوق</label>
+                  <select
+                    value={reconcileAccount.id}
+                    onChange={(e) => {
+                      const found = bankAccounts.find((b) => b.id === e.target.value);
+                      if (found) openReconcileModal(found);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold"
+                  >
+                    {bankAccounts.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.title} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    مانده اعلامی در صورتحساب بانک ({settings.currency})
+                  </label>
+                  <input
+                    type="number"
+                    value={bankStatementBalance}
+                    onChange={(e) => setBankStatementBalance(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white border border-indigo-400 rounded-lg p-2 font-mono font-bold text-left text-indigo-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="text-slate-500">مانده طبق دفاتر شرکت</div>
+                  <div className="text-sm font-black font-mono text-slate-900 mt-1">
+                    {formatCurrency(bookBalance, settings.currency)}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200">
+                  <div className="text-indigo-700">مانده صورتحساب بانک</div>
+                  <div className="text-sm font-black font-mono text-indigo-900 mt-1">
+                    {formatCurrency(bankStatementBalance, settings.currency)}
+                  </div>
+                </div>
+                <div
+                  className={`p-3 rounded-xl border ${
+                    diffAmount === 0
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}
+                >
+                  <div className="font-semibold">مبلغ مغایرت (بانک منهای دفاتر)</div>
+                  <div className="text-sm font-black font-mono mt-1">
+                    {diffAmount === 0
+                      ? '۰ (کاملاً منطبق و تراز)'
+                      : `${diffAmount > 0 ? '+' : ''}${formatCurrency(diffAmount, settings.currency)}`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Pending Cheques Summary */}
+              {(pendingReceiveCheques.length > 0 || pendingPaymentCheques.length > 0) && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    <span>اقلام باز و چک‌های در جریان (جهت کنترل اقلام باز بانکی):</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                    <div>
+                      چک‌های دریافتی وصول‌نشده:{' '}
+                      <strong className="font-mono text-emerald-700">
+                        {pendingReceiveCheques.length} فقره ({formatCurrency(pendingReceiveCheques.reduce((s, c) => s + c.amount, 0), settings.currency)})
+                      </strong>
+                    </div>
+                    <div>
+                      چک‌های پرداختی پاس‌نشده:{' '}
+                      <strong className="font-mono text-rose-700">
+                        {pendingPaymentCheques.length} فقره ({formatCurrency(pendingPaymentCheques.reduce((s, c) => s + c.amount, 0), settings.currency)})
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {diffAmount !== 0 && (
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2.5">
+                  <div className="font-bold text-amber-900">
+                    ثبت خودکار سند رفع مغایرت ({diffAmount < 0 ? 'ثبت کارمزد / کسر از حساب بانکی' : 'ثبت سود سپرده / واریزی ثبت‌نشده'})
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">شرح سند تعدیل مغایرت بانکی</label>
+                    <input
+                      type="text"
+                      value={reconcileNote}
+                      onChange={(e) => setReconcileNote(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleRecordBankReconciliationAdjustment(diffAmount)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-xs transition"
+                    >
+                      ثبت خودکار سند رفع مغایرت و تراز کردن موجودی بانک
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = reconcileAccount;
+                    setReconcileAccount(null);
+                    setSelectedAccountForCardex(target);
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold"
+                >
+                  مشاهده ریز کاردکس این حساب
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReconcileAccount(null)}
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold"
+                >
+                  بستن
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Cardex Modal */}
       {selectedAccountForCardex && (

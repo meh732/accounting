@@ -61,6 +61,11 @@ interface AccountingContextType {
   addProduct: (prd: Omit<Product, 'id' | 'code'> & { code?: string }) => Product;
   updateProduct: (id: string, prd: Partial<Product>) => void;
   deleteProduct: (id: string) => boolean;
+  performStocktaking: (
+    adjustments: { productId: string; countedQty: number; reason?: string }[],
+    date?: string,
+    notes?: string
+  ) => JournalVoucher | null;
 
   vouchers: JournalVoucher[];
   addVoucher: (vch: Omit<JournalVoucher, 'id' | 'voucherNumber' | 'createdAt'> & { voucherNumber?: number }) => JournalVoucher;
@@ -110,6 +115,8 @@ interface AccountingContextType {
   ) => JournalVoucher;
 
   resetToDefaultData: () => void;
+  runSampleAccountingScenario: () => Promise<void>;
+  clearAllDataToZero: () => Promise<void>;
   exportDatabaseJSON: () => void;
   importDatabaseJSON: (jsonData: string) => boolean;
 
@@ -130,20 +137,20 @@ interface AccountingContextType {
 }
 
 const STORAGE_KEYS = {
-  SETTINGS: 'acc_settings_v2',
-  ACCOUNTS: 'acc_accounts_v2',
-  CONTACTS: 'acc_contacts_v2',
-  BANKS: 'acc_banks_v2',
-  CATEGORIES: 'acc_categories_v2',
-  PRODUCTS: 'acc_products_v2',
-  VOUCHERS: 'acc_vouchers_v2',
-  INVOICES: 'acc_invoices_v2',
-  EXPENSES: 'acc_expenses_v2',
-  YEARS: 'acc_financial_years_v2',
-  BACKUPS: 'acc_backup_snapshots_v2',
-  LAST_BACKUP: 'acc_last_backup_time_v2',
-  CHEQUES: 'acc_cheques_v2',
-  FIN_TX: 'acc_fin_tx_v2',
+  SETTINGS: 'acc_settings_v3',
+  ACCOUNTS: 'acc_accounts_v3',
+  CONTACTS: 'acc_contacts_v3',
+  BANKS: 'acc_banks_v3',
+  CATEGORIES: 'acc_categories_v3',
+  PRODUCTS: 'acc_products_v3',
+  VOUCHERS: 'acc_vouchers_v3',
+  INVOICES: 'acc_invoices_v3',
+  EXPENSES: 'acc_expenses_v3',
+  YEARS: 'acc_financial_years_v3',
+  BACKUPS: 'acc_backup_snapshots_v3',
+  LAST_BACKUP: 'acc_last_backup_time_v3',
+  CHEQUES: 'acc_cheques_v3',
+  FIN_TX: 'acc_fin_tx_v3',
 };
 
 const AccountingContext = createContext<AccountingContextType | undefined>(undefined);
@@ -745,23 +752,159 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addProduct = (prdData: Omit<Product, 'id' | 'code'> & { code?: string }) => {
     const nextCode = prdData.code || `PRD-${100 + products.length + 1}`;
+    const initialQty = prdData.initialStock ?? prdData.stockQuantity ?? 0;
+    const stockQty = prdData.stockQuantity ?? prdData.initialStock ?? 0;
+    const cat = productCategories.find((c) => c.id === prdData.categoryId);
     const newProduct: Product = {
       ...prdData,
-      id: `prd-${Date.now()}`,
+      id: `prd-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       code: nextCode,
-      stockQuantity: prdData.initialStock || prdData.stockQuantity || 0,
+      categoryTitle: prdData.categoryTitle || cat?.title || 'کالای عمومی',
+      initialStock: initialQty,
+      stockQuantity: stockQty,
+      stockAdjustments: prdData.stockAdjustments || [],
     };
     setProducts((prev) => [...prev, newProduct]);
     return newProduct;
   };
 
   const updateProduct = (id: string, prdData: Partial<Product>) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...prdData } : p)));
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const cat = prdData.categoryId
+          ? productCategories.find((c) => c.id === prdData.categoryId)
+          : undefined;
+        return {
+          ...p,
+          ...prdData,
+          categoryTitle: prdData.categoryTitle || cat?.title || p.categoryTitle,
+        };
+      })
+    );
   };
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
     return true;
+  };
+
+  const performStocktaking = (
+    adjustments: { productId: string; countedQty: number; reason?: string }[],
+    date?: string,
+    notes?: string
+  ): JournalVoucher | null => {
+    const opDate = date || getCurrentShamsiDate();
+    const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+    const nextVoucherNo = maxVoucherNumber + 1;
+    const voucherId = `vch-stk-${Date.now()}`;
+
+    let netValueDiff = 0; // positive = surplus (اضافه انبار), negative = deficit (کسری انبار)
+    const changedItemsSummary: string[] = [];
+
+    const validAdjustments = adjustments.filter((adj) => {
+      const p = products.find((prd) => prd.id === adj.productId);
+      return p && adj.countedQty !== p.stockQuantity && adj.countedQty >= 0;
+    });
+
+    if (validAdjustments.length === 0) return null;
+
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => {
+        const adj = validAdjustments.find((a) => a.productId === p.id);
+        if (!adj) return p;
+
+        const diffQty = adj.countedQty - p.stockQuantity;
+        const unitCost = p.buyPrice || 0;
+        netValueDiff += diffQty * unitCost;
+        changedItemsSummary.push(
+          `${p.title} (${diffQty > 0 ? '+' + diffQty + ' اضافه' : diffQty + ' کسری'})`
+        );
+
+        const newAdjRecord = {
+          id: `stk-adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          date: opDate,
+          systemQty: p.stockQuantity,
+          countedQty: adj.countedQty,
+          diffQty,
+          unitCost,
+          reason: adj.reason || notes || 'تعدیل موجودی در انبارگردانی دوره',
+          voucherId: settings.autoGenerateVouchers && Math.abs(diffQty * unitCost) > 0 ? voucherId : undefined,
+          voucherNumber: settings.autoGenerateVouchers && Math.abs(diffQty * unitCost) > 0 ? nextVoucherNo : undefined,
+        };
+
+        return {
+          ...p,
+          stockQuantity: adj.countedQty,
+          stockAdjustments: [...(p.stockAdjustments || []), newAdjRecord],
+        };
+      })
+    );
+
+    if (settings.autoGenerateVouchers && Math.abs(netValueDiff) > 0) {
+      const absVal = Math.abs(netValueDiff);
+      const isSurplus = netValueDiff > 0;
+
+      const stockVoucher: JournalVoucher = {
+        id: voucherId,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        referenceNumber: `STK-${nextVoucherNo}`,
+        description: `سند تعدیل موجودی انبارگردانی: ${changedItemsSummary.join('، ')}${notes ? ' - ' + notes : ''}`,
+        type: 'stocktaking',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'stocktaking',
+        createdAt: getCurrentShamsiDate(),
+        items: isSurplus
+          ? [
+              {
+                id: `vi-stk-deb-${Date.now()}`,
+                accountCode: '10401',
+                accountTitle: 'موجودی کالای انبار مرکزی',
+                tafsiliTitle: 'افزایش موجودی انبارگردانی',
+                description: `ثبت اضافه انبارگردانی (${changedItemsSummary.join('، ')})`,
+                debit: absVal,
+                credit: 0,
+              },
+              {
+                id: `vi-stk-crd-${Date.now()}`,
+                accountCode: '60101',
+                accountTitle: 'بهای تمام شده کالای فروش رفته',
+                tafsiliTitle: 'کسری و اضافات انبارگردانی',
+                description: `کاهش بهای تمام شده بابت اضافه انبارگردانی`,
+                debit: 0,
+                credit: absVal,
+              },
+            ]
+          : [
+              {
+                id: `vi-stk-deb-${Date.now()}`,
+                accountCode: '60101',
+                accountTitle: 'بهای تمام شده کالای فروش رفته',
+                tafsiliTitle: 'کسری و اضافات انبارگردانی',
+                description: `ثبت کسری انبارگردانی (${changedItemsSummary.join('، ')})`,
+                debit: absVal,
+                credit: 0,
+              },
+              {
+                id: `vi-stk-crd-${Date.now()}`,
+                accountCode: '10401',
+                accountTitle: 'موجودی کالای انبار مرکزی',
+                tafsiliTitle: 'کاهش موجودی انبارگردانی',
+                description: `کاهش موجودی انبار مرکزی طبق صورتجلسه انبارگردانی`,
+                debit: 0,
+                credit: absVal,
+              },
+            ],
+      };
+
+      setVouchers((prev) => [stockVoucher, ...prev]);
+      return stockVoucher;
+    }
+
+    return null;
   };
 
   const addVoucher = (vchData: Omit<JournalVoucher, 'id' | 'voucherNumber' | 'createdAt'> & { voucherNumber?: number }) => {
@@ -812,6 +955,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-${Date.now()}-${Math.random()}`,
             accountCode: '10101',
             accountTitle: 'صندوق‌ها',
+            tafsiliId: c.cashId,
             tafsiliTitle: c.cashTitle,
             description: `دریافت نقدی فاکتور فروش شماره ${inv.invoiceNumber}`,
             debit: c.amount,
@@ -828,6 +972,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-${Date.now()}-${Math.random()}`,
             accountCode: isPos ? '10104' : '10102',
             accountTitle: isPos ? 'دستگاه‌های کارتخوان (POS)' : 'حساب‌های بانکی ریالی',
+            tafsiliId: b.bankId,
             tafsiliTitle: b.bankTitle,
             description: `دریافت بانکی فاکتور فروش ${inv.invoiceNumber}${b.trackingCode ? ' (کد پیگیری: ' + b.trackingCode + ')' : ''}`,
             debit: b.amount,
@@ -856,6 +1001,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           accountCode: '10301',
           accountTitle: 'مشتریان تجاری داخلی',
           tafsiliId: inv.contactId,
+          contactId: inv.contactId,
           tafsiliTitle: inv.contactName,
           description: `مانده نسیه فاکتور فروش شماره ${inv.invoiceNumber}`,
           debit: inv.settlement.creditAmount,
@@ -931,6 +1077,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-${Date.now()}-${Math.random()}`,
             accountCode: '10101',
             accountTitle: 'صندوق‌ها',
+            tafsiliId: c.cashId,
             tafsiliTitle: c.cashTitle,
             description: `پرداخت نقدی فاکتور خرید ${inv.invoiceNumber}`,
             debit: 0,
@@ -945,6 +1092,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-${Date.now()}-${Math.random()}`,
             accountCode: '10102',
             accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliId: b.bankId,
             tafsiliTitle: b.bankTitle,
             description: `پرداخت بانکی فاکتور خرید ${inv.invoiceNumber}`,
             debit: 0,
@@ -973,6 +1121,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           accountCode: '30101',
           accountTitle: 'تامین‌کنندگان کالا و خدمات',
           tafsiliId: inv.contactId,
+          contactId: inv.contactId,
           tafsiliTitle: inv.contactName,
           description: `مانده نسیه فاکتور خرید ${inv.invoiceNumber}`,
           debit: 0,
@@ -1014,27 +1163,123 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           credit: 0,
         });
       }
-      items.push({
-        id: `vi-${Date.now()}-${Math.random()}`,
-        accountCode: '10301',
-        accountTitle: 'مشتریان تجاری داخلی',
-        tafsiliId: inv.contactId,
-        tafsiliTitle: inv.contactName,
-        description: `بستانکار شدن مشتری بابت برگشت از فروش ${inv.invoiceNumber}`,
-        debit: 0,
-        credit: inv.grandTotal,
+      const totalDiscounts =
+        inv.totalItemsDiscount + inv.totalInvoiceDiscount + (inv.settlement?.discountAmount || 0);
+      if (totalDiscounts > 0) {
+        items.push({
+          id: `vi-${Date.now()}-${Math.random()}`,
+          accountCode: '50202',
+          accountTitle: 'تخفیفات نقدی اعطایی فروش',
+          tafsiliTitle: inv.contactName,
+          description: `اصلاح تخفیفات فاکتور برگشت از فروش ${inv.invoiceNumber}`,
+          debit: 0,
+          credit: totalDiscounts,
+        });
+      }
+      inv.settlement.cashPayments.forEach((c) => {
+        if (c.amount > 0) {
+          items.push({
+            id: `vi-${Date.now()}-${Math.random()}`,
+            accountCode: '10101',
+            accountTitle: 'صندوق‌ها',
+            tafsiliId: c.cashId,
+            tafsiliTitle: c.cashTitle,
+            description: `استرداد نقدی بابت برگشت از فروش ${inv.invoiceNumber}`,
+            debit: 0,
+            credit: c.amount,
+          });
+        }
       });
+      inv.settlement.bankPayments.forEach((b) => {
+        if (b.amount > 0) {
+          items.push({
+            id: `vi-${Date.now()}-${Math.random()}`,
+            accountCode: '10102',
+            accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliId: b.bankId,
+            tafsiliTitle: b.bankTitle,
+            description: `استرداد بانکی بابت برگشت از فروش ${inv.invoiceNumber}`,
+            debit: 0,
+            credit: b.amount,
+          });
+        }
+      });
+      const paidOnReturn =
+        inv.settlement.cashPayments.reduce((s, c) => s + (c.amount || 0), 0) +
+        inv.settlement.bankPayments.reduce((s, b) => s + (b.amount || 0), 0);
+      const remainingCreditCustomer = Math.max(0, inv.grandTotal - paidOnReturn);
+      if (remainingCreditCustomer > 0) {
+        items.push({
+          id: `vi-${Date.now()}-${Math.random()}`,
+          accountCode: '10301',
+          accountTitle: 'مشتریان تجاری داخلی',
+          tafsiliId: inv.contactId,
+          contactId: inv.contactId,
+          tafsiliTitle: inv.contactName,
+          description: `بستانکار شدن مشتری بابت برگشت از فروش ${inv.invoiceNumber}`,
+          debit: 0,
+          credit: remainingCreditCustomer,
+        });
+      }
     } else if (inv.type === 'purchase_return') {
-      items.push({
-        id: `vi-${Date.now()}-${Math.random()}`,
-        accountCode: '30101',
-        accountTitle: 'تامین‌کنندگان کالا و خدمات',
-        tafsiliId: inv.contactId,
-        tafsiliTitle: inv.contactName,
-        description: `بدهکار شدن تامین کننده بابت برگشت از خرید ${inv.invoiceNumber}`,
-        debit: inv.grandTotal,
-        credit: 0,
+      inv.settlement.cashPayments.forEach((c) => {
+        if (c.amount > 0) {
+          items.push({
+            id: `vi-${Date.now()}-${Math.random()}`,
+            accountCode: '10101',
+            accountTitle: 'صندوق‌ها',
+            tafsiliId: c.cashId,
+            tafsiliTitle: c.cashTitle,
+            description: `دریافت نقدی بابت برگشت از خرید ${inv.invoiceNumber}`,
+            debit: c.amount,
+            credit: 0,
+          });
+        }
       });
+      inv.settlement.bankPayments.forEach((b) => {
+        if (b.amount > 0) {
+          items.push({
+            id: `vi-${Date.now()}-${Math.random()}`,
+            accountCode: '10102',
+            accountTitle: 'حساب‌های بانکی ریالی',
+            tafsiliId: b.bankId,
+            tafsiliTitle: b.bankTitle,
+            description: `دریافت بانکی بابت برگشت از خرید ${inv.invoiceNumber}`,
+            debit: b.amount,
+            credit: 0,
+          });
+        }
+      });
+      const receivedOnReturn =
+        inv.settlement.cashPayments.reduce((s, c) => s + (c.amount || 0), 0) +
+        inv.settlement.bankPayments.reduce((s, b) => s + (b.amount || 0), 0);
+      const remainingDebitSupplier = Math.max(0, inv.grandTotal - receivedOnReturn);
+      if (remainingDebitSupplier > 0) {
+        items.push({
+          id: `vi-${Date.now()}-${Math.random()}`,
+          accountCode: '30101',
+          accountTitle: 'تامین‌کنندگان کالا و خدمات',
+          tafsiliId: inv.contactId,
+          contactId: inv.contactId,
+          tafsiliTitle: inv.contactName,
+          description: `بدهکار شدن تامین کننده بابت برگشت از خرید ${inv.invoiceNumber}`,
+          debit: remainingDebitSupplier,
+          credit: 0,
+        });
+      }
+      const totalDiscounts =
+        inv.totalItemsDiscount + inv.totalInvoiceDiscount + (inv.settlement?.discountAmount || 0);
+      if (totalDiscounts > 0) {
+        items.push({
+          id: `vi-${Date.now()}-${Math.random()}`,
+          accountCode: '60302',
+          accountTitle: 'تخفیفات نقدی کسب شده خرید',
+          tafsiliTitle: inv.contactName,
+          description: `اصلاح تخفیف فاکتور برگشت از خرید ${inv.invoiceNumber}`,
+          debit: totalDiscounts,
+          credit: 0,
+        });
+      }
       items.push({
         id: `vi-${Date.now()}-${Math.random()}`,
         accountCode: '60301',
@@ -1062,7 +1307,9 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       voucherNumber: nextVoucherNo,
       date: inv.date,
       gregorianDate: new Date().toISOString().split('T')[0],
+      referenceNumber: `INV-${inv.invoiceNumber}`,
       description: `صدور خودکار سند فاکتور ${invoiceTypeTitle} شماره ${inv.invoiceNumber} - ${inv.contactName}`,
+      type: inv.type === 'sales' || inv.type === 'sales_return' ? 'sales' : 'purchase',
       items,
       status: 'permanent',
       isAutoGenerated: true,
@@ -1086,17 +1333,29 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: getCurrentShamsiDate(),
     };
 
-    // Update Product stock quantity
+    // Update Product stock quantity and weighted average purchase cost on purchase invoices
     setProducts((prevProducts) =>
       prevProducts.map((p) => {
         const item = createdInvoice.items.find((i) => i.productId === p.id);
         if (!item) return p;
 
         let delta = 0;
+        let updatedBuyPrice = p.buyPrice;
         if (createdInvoice.type === 'sales') {
           delta = -item.quantity;
         } else if (createdInvoice.type === 'purchase') {
           delta = +item.quantity;
+          if (item.unitPrice > 0) {
+            const currentStock = Math.max(0, p.stockQuantity);
+            if (currentStock === 0 || !p.buyPrice || p.buyPrice <= 0) {
+              updatedBuyPrice = item.unitPrice;
+            } else {
+              updatedBuyPrice = Math.round(
+                (currentStock * p.buyPrice + item.quantity * item.unitPrice) /
+                  (currentStock + item.quantity)
+              );
+            }
+          }
         } else if (createdInvoice.type === 'sales_return') {
           delta = +item.quantity;
         } else if (createdInvoice.type === 'purchase_return') {
@@ -1104,6 +1363,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         return {
           ...p,
+          buyPrice: updatedBuyPrice,
           stockQuantity: Math.max(0, p.stockQuantity + delta),
         };
       })
@@ -1263,14 +1523,16 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         voucherNumber: nextVoucherNo,
         date: createdExpense.date,
         gregorianDate: new Date().toISOString().split('T')[0],
+        referenceNumber: `EXP-${createdExpense.expenseNumber}`,
         description: `ثبت هزینه شماره ${createdExpense.expenseNumber} - ${createdExpense.accountTitle}: ${createdExpense.description}`,
+        type: 'expense',
         items: [
           {
             id: `vi-exp-deb-${Date.now()}`,
             accountCode: createdExpense.accountCode,
             accountTitle: createdExpense.accountTitle,
             tafsiliTitle: createdExpense.beneficiary || 'مرکز هزینه',
-            description: createdExpense.description,
+            description: createdExpense.description || createdExpense.title || createdExpense.accountTitle,
             debit: createdExpense.amount,
             credit: 0,
           },
@@ -1278,6 +1540,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-exp-crd-${Date.now()}`,
             accountCode: creditAccountCode,
             accountTitle: creditAccountTitle,
+            tafsiliId: createdExpense.sourceAccountId,
             tafsiliTitle: createdExpense.sourceAccountTitle || 'حساب پرداخت',
             description: `پرداخت بابت ${createdExpense.accountTitle}${createdExpense.trackingNumber ? ' (کد: ' + createdExpense.trackingNumber + ')' : ''}`,
             debit: 0,
@@ -1300,7 +1563,56 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateExpense = (id: string, expData: Partial<Expense>) => {
-    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...expData } : e)));
+    const oldExp = expenses.find((e) => e.id === id);
+    if (!oldExp) return;
+    const updatedExp: Expense = { ...oldExp, ...expData };
+
+    if (settings.autoGenerateVouchers && updatedExp.voucherId) {
+      let creditAccountCode = '10101';
+      let creditAccountTitle = 'صندوق‌ها';
+      if (updatedExp.paymentType === 'bank') {
+        creditAccountCode = '10102';
+        creditAccountTitle = 'حساب‌های بانکی ریالی';
+      } else if (updatedExp.paymentType === 'credit') {
+        creditAccountCode = '30101';
+        creditAccountTitle = 'حساب‌های پرداختنی تجاری';
+      }
+
+      setVouchers((prev) =>
+        prev.map((v) =>
+          v.id === updatedExp.voucherId
+            ? {
+                ...v,
+                date: updatedExp.date,
+                description: `ثبت هزینه شماره ${updatedExp.expenseNumber} - ${updatedExp.accountTitle}: ${updatedExp.description}`,
+                items: [
+                  {
+                    id: `vi-exp-deb-${Date.now()}`,
+                    accountCode: updatedExp.accountCode,
+                    accountTitle: updatedExp.accountTitle,
+                    tafsiliTitle: updatedExp.beneficiary || 'مرکز هزینه',
+                    description: updatedExp.description || updatedExp.title || updatedExp.accountTitle,
+                    debit: updatedExp.amount,
+                    credit: 0,
+                  },
+                  {
+                    id: `vi-exp-crd-${Date.now()}`,
+                    accountCode: creditAccountCode,
+                    accountTitle: creditAccountTitle,
+                    tafsiliId: updatedExp.sourceAccountId,
+                    tafsiliTitle: updatedExp.sourceAccountTitle || 'حساب پرداخت',
+                    description: `پرداخت بابت ${updatedExp.accountTitle}${updatedExp.trackingNumber ? ' (کد: ' + updatedExp.trackingNumber + ')' : ''}`,
+                    debit: 0,
+                    credit: updatedExp.amount,
+                  },
+                ],
+              }
+            : v
+        )
+      );
+    }
+
+    setExpenses((prev) => prev.map((e) => (e.id === id ? updatedExp : e)));
   };
 
   const deleteExpense = (id: string) => {
@@ -1562,6 +1874,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             id: `vi-bnc-deb-${Date.now()}`,
             accountCode: '10301',
             accountTitle: 'حساب‌های دریافتنی تجاری (مشتریان)',
+            tafsiliId: chq.contactId,
             tafsiliTitle: chq.contactName,
             contactId: chq.contactId,
             description: `احیای بدهی مشتری بابت برگشت چک شماره ${chq.chequeNumber}`,
@@ -1574,6 +1887,43 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             accountTitle: 'اسناد دریافتنی تجاری (چک‌های نزد صندوق)',
             tafsiliTitle: `چک ${chq.bankName} - ${chq.chequeNumber}`,
             description: `خروج چک برگشتی شماره ${chq.chequeNumber} از اسناد در جریان وصول`,
+            debit: 0,
+            credit: chq.amount,
+          },
+        ],
+        type: 'cheque_bounce',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'cheque',
+        sourceId: chq.id,
+        createdAt: getCurrentShamsiDate(),
+      };
+    } else {
+      // برگشت چک پرداختی: بدهکار اسناد پرداختنی (30201) / بستانکار حساب‌های پرداختنی (30101)
+      bounceVoucher = {
+        id: `vch-chq-pay-bounce-${Date.now()}`,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        description: `برگشت چک پرداختی شماره ${chq.chequeNumber} در وجه ${chq.contactName}${reason ? ' (علت: ' + reason + ')' : ''}`,
+        items: [
+          {
+            id: `vi-pbnc-deb-${Date.now()}`,
+            accountCode: '30201',
+            accountTitle: 'اسناد پرداختنی تجاری (چک‌های صادره)',
+            tafsiliTitle: chq.bankAccountTitle || `چک ${chq.bankName}`,
+            description: `خروج چک پرداختی برگشتی شماره ${chq.chequeNumber}`,
+            debit: chq.amount,
+            credit: 0,
+          },
+          {
+            id: `vi-pbnc-crd-${Date.now()}`,
+            accountCode: '30101',
+            accountTitle: 'حساب‌های پرداختنی تجاری (تامین‌کنندگان)',
+            tafsiliId: chq.contactId,
+            tafsiliTitle: chq.contactName,
+            contactId: chq.contactId,
+            description: `احیای بدهی به تامین‌کننده بابت برگشت چک شماره ${chq.chequeNumber}`,
             debit: 0,
             credit: chq.amount,
           },
@@ -1613,9 +1963,72 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const opDate = returnDate || getCurrentShamsiDate();
 
-    // If initial voucher existed, reverse or remove it
-    if (chq.voucherId) {
+    // If standalone cheque voucher existed (not an invoice voucher), remove it; if from invoice, issue reversal
+    if (chq.voucherId && !chq.invoiceId && !chq.id.startsWith('chq-inv-')) {
       setVouchers((prev) => prev.filter((v) => v.id !== chq.voucherId));
+    } else if (chq.invoiceId || chq.id.startsWith('chq-inv-')) {
+      const maxVoucherNumber = vouchers.length > 0 ? Math.max(...vouchers.map((v) => v.voucherNumber)) : 100;
+      const nextVoucherNo = maxVoucherNumber + 1;
+      const revVch: JournalVoucher = {
+        id: `vch-chq-ret-${Date.now()}`,
+        voucherNumber: nextVoucherNo,
+        date: opDate,
+        gregorianDate: new Date().toISOString().split('T')[0],
+        description: `استرداد چک شماره ${chq.chequeNumber} طرف‌حساب ${chq.contactName}`,
+        items:
+          chq.type === 'receive'
+            ? [
+                {
+                  id: `vi-ret-deb-${Date.now()}`,
+                  accountCode: '10301',
+                  accountTitle: 'مشتریان تجاری داخلی',
+                  tafsiliId: chq.contactId,
+                  contactId: chq.contactId,
+                  tafsiliTitle: chq.contactName,
+                  description: `بدهکار شدن مشتری بابت استرداد چک شماره ${chq.chequeNumber}`,
+                  debit: chq.amount,
+                  credit: 0,
+                },
+                {
+                  id: `vi-ret-crd-${Date.now()}`,
+                  accountCode: '10201',
+                  accountTitle: 'چک‌های دریافتی نزد صندوق',
+                  tafsiliTitle: `چک ${chq.bankName} - ${chq.chequeNumber}`,
+                  description: `استرداد لاشه چک شماره ${chq.chequeNumber}`,
+                  debit: 0,
+                  credit: chq.amount,
+                },
+              ]
+            : [
+                {
+                  id: `vi-ret-deb-${Date.now()}`,
+                  accountCode: '30201',
+                  accountTitle: 'چک‌های پرداختنی عهده بانک‌ها',
+                  tafsiliTitle: `چک ${chq.bankName} - ${chq.chequeNumber}`,
+                  description: `دریافت لاشه چک استردادی شماره ${chq.chequeNumber}`,
+                  debit: chq.amount,
+                  credit: 0,
+                },
+                {
+                  id: `vi-ret-crd-${Date.now()}`,
+                  accountCode: '30101',
+                  accountTitle: 'تامین‌کنندگان کالا و خدمات',
+                  tafsiliId: chq.contactId,
+                  contactId: chq.contactId,
+                  tafsiliTitle: chq.contactName,
+                  description: `بستانکار شدن تامین‌کننده بابت استرداد چک ${chq.chequeNumber}`,
+                  debit: 0,
+                  credit: chq.amount,
+                },
+              ],
+        type: 'cheque_bounce',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'cheque',
+        sourceId: chq.id,
+        createdAt: getCurrentShamsiDate(),
+      };
+      setVouchers((prev) => [revVch, ...prev]);
     }
 
     setCheques((prev) =>
@@ -2397,9 +2810,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return voucher;
   };
 
-  const resetToDefaultData = async () => {
-    // Save safety snapshot first!
-    createBackupSnapshot('پیش از بازنشانی به پیش‌فرض کارخانه');
+  const runSampleAccountingScenario = async () => {
+    createBackupSnapshot('پیش از اجرای چرخه کامل نمونه حسابداری');
 
     setSettings(defaultCompanySettings);
     setChartOfAccounts(defaultChartOfAccounts);
@@ -2415,12 +2827,67 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFinancialTransactions(defaultFinancialTransactions);
 
     try {
+      const payload = {
+        settings: defaultCompanySettings,
+        accounts: defaultChartOfAccounts,
+        contacts: defaultContacts,
+        bankAccounts: defaultBankAccounts,
+        categories: defaultProductCategories,
+        products: defaultProducts,
+        invoices: defaultInvoices,
+        vouchers: defaultJournalVouchers,
+        expenses: defaultExpenses,
+        financialYears: defaultFinancialYears,
+        cheques: defaultCheques,
+        financialTransactions: defaultFinancialTransactions,
+        backups: autoBackupSnapshots,
+        senderClientId: clientIdRef.current,
+      };
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': clientIdRef.current,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        serverVersionRef.current = resData.version;
+        setServerSyncStatus('synced');
+        setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
+      }
+    } catch (err) {
+      console.error('Failed to sync sample scenario on server:', err);
+    }
+  };
+
+  const clearAllDataToZero = async () => {
+    createBackupSnapshot('پیش از صفر کردن دیتابیس (شروع از صفر)');
+
+    setChartOfAccounts(defaultChartOfAccounts);
+    setContacts([]);
+    setBankAccounts([]);
+    setProductCategories([]);
+    setProducts([]);
+    setInvoices([]);
+    setVouchers([]);
+    setExpenses([]);
+    setFinancialYears(defaultFinancialYears);
+    setCheques([]);
+    setFinancialTransactions([]);
+
+    try {
       await fetch('/api/reset', { method: 'POST' });
       setServerSyncStatus('synced');
       setLastServerSyncTime(new Date().toLocaleTimeString('fa-IR'));
     } catch (err) {
       console.error('Failed to reset on server:', err);
     }
+  };
+
+  const resetToDefaultData = async () => {
+    await runSampleAccountingScenario();
   };
 
   const exportDatabaseJSON = () => {
@@ -2503,6 +2970,7 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addProduct,
         updateProduct,
         deleteProduct,
+        performStocktaking,
         vouchers,
         addVoucher,
         updateVoucher,
@@ -2531,6 +2999,8 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         switchFinancialYear,
         recordPartnerTransaction,
         resetToDefaultData,
+        runSampleAccountingScenario,
+        clearAllDataToZero,
         exportDatabaseJSON,
         importDatabaseJSON,
         autoBackupSnapshots,
