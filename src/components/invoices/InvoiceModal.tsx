@@ -95,6 +95,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [quickProductUnit, setQuickProductUnit] = useState('عدد');
   const [quickProductBuyPrice, setQuickProductBuyPrice] = useState<number>(0);
   const [quickProductSalePrice, setQuickProductSalePrice] = useState<number>(0);
+  const [quickProductInitialStock, setQuickProductInitialStock] = useState<number>(0);
 
   // Keyboard shortcut hints toggle
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
@@ -548,7 +549,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       unit: quickProductUnit.trim() || 'عدد',
       buyPrice: quickProductBuyPrice || 0,
       salePrice: quickProductSalePrice || quickProductBuyPrice || 0,
-      stockQuantity: 0,
+      initialStock: quickProductInitialStock || 0,
+      stockQuantity: quickProductInitialStock || 0,
       reorderPoint: 5,
     });
 
@@ -581,6 +583,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setQuickProductTitle('');
     setQuickProductBuyPrice(0);
     setQuickProductSalePrice(0);
+    setQuickProductInitialStock(0);
     setShowQuickProduct(false);
   };
 
@@ -974,24 +977,40 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs text-center outline-hidden"
                   />
                 </div>
-                <div className="w-32">
+                <div className="w-28">
                   <label className="block text-[10px] font-bold text-amber-900 mb-1">قیمت خرید ({settings.currency}):</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={quickProductBuyPrice || ''}
                     placeholder="0"
-                    onChange={(e) => setQuickProductBuyPrice(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setQuickProductBuyPrice(parseNumberFromInput(e.target.value))}
                     className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
                   />
                 </div>
-                <div className="w-32">
+                <div className="w-28">
                   <label className="block text-[10px] font-bold text-amber-900 mb-1">قیمت فروش ({settings.currency}):</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={quickProductSalePrice || ''}
                     placeholder="0"
-                    onChange={(e) => setQuickProductSalePrice(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setQuickProductSalePrice(parseNumberFromInput(e.target.value))}
                     className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-left outline-hidden"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">اول دوره:</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
+                    value={quickProductInitialStock || ''}
+                    placeholder="0"
+                    onChange={(e) => setQuickProductInitialStock(parseNumberFromInput(e.target.value))}
+                    className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono text-center font-bold outline-hidden"
                   />
                 </div>
                 <button
@@ -1070,13 +1089,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </td>
                       <td className="py-2 px-2">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           id={`input-item-${idx}-qty`}
-                          min="0.01"
-                          step="any"
                           value={row.quantity}
                           onFocus={handleInputFocus}
-                          onChange={(e) => updateItemField(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateItemField(idx, 'quantity', parseNumberFromInput(e.target.value))}
                           onKeyDown={(e) => handleKeyDown(e, `input-item-${idx}-price`)}
                           className="w-full text-center border border-slate-300 focus:border-indigo-500 rounded px-1 py-1 text-xs font-mono font-bold outline-hidden bg-white"
                           required
@@ -1084,11 +1103,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </td>
                       <td className="py-2 px-2">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          dir="ltr"
                           id={`input-item-${idx}-price`}
                           value={row.unitPrice}
                           onFocus={handleInputFocus}
-                          onChange={(e) => updateItemField(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateItemField(idx, 'unitPrice', parseNumberFromInput(e.target.value))}
                           onKeyDown={(e) => handleKeyDown(e, `input-item-${idx}-discount`)}
                           className="w-full text-left font-mono font-bold border border-slate-300 focus:border-indigo-500 rounded px-2 py-1 text-xs outline-hidden bg-white"
                           required
@@ -1199,13 +1220,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <div>
                       <label className="text-[11px] text-slate-600 font-bold block mb-0.5">تعداد ({row.unit}):</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
+                        dir="ltr"
                         id={`input-item-mobile-${idx}-qty`}
-                        min="0.01"
-                        step="any"
                         value={row.quantity}
                         onFocus={handleInputFocus}
-                        onChange={(e) => updateItemField(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => updateItemField(idx, 'quantity', parseNumberFromInput(e.target.value))}
                         onKeyDown={(e) => handleKeyDown(e, `input-item-mobile-${idx}-price`)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-center"
                       />
@@ -1213,11 +1234,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <div>
                       <label className="text-[11px] text-slate-600 font-bold block mb-0.5">قیمت واحد ({settings.currency}):</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
+                        dir="ltr"
                         id={`input-item-mobile-${idx}-price`}
                         value={row.unitPrice}
                         onFocus={handleInputFocus}
-                        onChange={(e) => updateItemField(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => updateItemField(idx, 'unitPrice', parseNumberFromInput(e.target.value))}
                         onKeyDown={(e) => handleKeyDown(e, undefined, true, idx)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-left"
                       />

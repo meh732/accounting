@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { BankAccount, BankAccountType } from '../../types/accounting';
 import { calculateBankCardex } from '../../utils/financialCalculations';
-import { formatCurrency, getCurrentShamsiDate } from '../../utils/dateUtils';
+import { formatCurrency, getCurrentShamsiDate, parseNumberFromInput } from '../../utils/dateUtils';
 import { BankCardexModal } from './BankCardexModal';
 import {
   Landmark,
@@ -549,10 +549,13 @@ export const BankAndCashView: React.FC = () => {
                   موجودی اولیه اول دوره ({settings.currency})
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  dir="ltr"
                   value={initialBalance}
-                  onChange={(e) => setInitialBalance(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 font-mono text-left"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setInitialBalance(parseNumberFromInput(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 font-mono font-bold text-left"
                 />
               </div>
 
@@ -637,9 +640,12 @@ export const BankAndCashView: React.FC = () => {
                     مانده اعلامی در صورتحساب بانک ({settings.currency})
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={bankStatementBalance}
-                    onChange={(e) => setBankStatementBalance(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setBankStatementBalance(parseNumberFromInput(e.target.value))}
                     className="w-full bg-white border border-indigo-400 rounded-lg p-2 font-mono font-bold text-left text-indigo-800"
                   />
                 </div>

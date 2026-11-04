@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { Product } from '../../types/accounting';
-import { formatCurrency, getCurrentShamsiDate } from '../../utils/dateUtils';
+import { formatCurrency, getCurrentShamsiDate, parseNumberFromInput } from '../../utils/dateUtils';
+import { calculateProductCardex } from '../../utils/financialCalculations';
 import { ProductCardexModal } from './ProductCardexModal';
 import {
   Package,
@@ -22,6 +23,7 @@ export const ProductsInventoryView: React.FC = () => {
   const {
     products,
     productCategories,
+    invoices,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -121,15 +123,16 @@ export const ProductsInventoryView: React.FC = () => {
   };
 
   const openEditProductModal = (p: Product) => {
+    const cardex = calculateProductCardex(p, invoices);
     setProductToEdit(p);
     setCode(p.code);
     setBarcode(p.barcode || '');
     setTitle(p.title);
     setCategoryId(p.categoryId);
     setUnit(p.unit);
-    setBuyPrice(p.buyPrice);
+    setBuyPrice(p.buyPrice || cardex.effectiveBuyPrice || 0);
     setSalePrice(p.salePrice);
-    setStockQuantity(p.stockQuantity);
+    setStockQuantity(cardex.initialStock);
     setReorderPoint(p.reorderPoint);
     setDescription(p.description || '');
     setIsProductModalOpen(true);
@@ -170,7 +173,7 @@ export const ProductsInventoryView: React.FC = () => {
         unit,
         buyPrice,
         salePrice,
-        stockQuantity,
+        initialStock: stockQuantity,
         reorderPoint,
         description,
       });
@@ -221,8 +224,11 @@ export const ProductsInventoryView: React.FC = () => {
     return matchCat && matchSearch;
   });
 
-  // Total inventory valuation
-  const totalInventoryValue = products.reduce((sum, p) => sum + p.stockQuantity * p.buyPrice, 0);
+  // Total inventory valuation (using effective buy price from cardex so purchase invoices are always valued)
+  const totalInventoryValue = products.reduce((sum, p) => {
+    const cardex = calculateProductCardex(p, invoices);
+    return sum + cardex.currentStockValue;
+  }, 0);
   const totalItemsCount = products.reduce((sum, p) => sum + p.stockQuantity, 0);
 
   return (
@@ -377,13 +383,15 @@ export const ProductsInventoryView: React.FC = () => {
                 <th className="py-3 px-3 w-20 text-center">واحد</th>
                 <th className="py-3 px-3 text-left w-32">قیمت خرید ({settings.currency})</th>
                 <th className="py-3 px-3 text-left w-32">قیمت فروش ({settings.currency})</th>
-                <th className="py-3 px-3 text-center w-28">موجودی انبار</th>
+                <th className="py-3 px-3 text-center w-24">اول دوره</th>
+                <th className="py-3 px-3 text-center w-28">موجودی فعلی انبار</th>
                 <th className="py-3 px-3 text-center w-36">کاردکس و عملیات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredProducts.map((p) => {
                 const isLowStock = p.stockQuantity <= p.reorderPoint;
+                const cardex = calculateProductCardex(p, invoices);
 
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/80 transition">
@@ -399,10 +407,13 @@ export const ProductsInventoryView: React.FC = () => {
                     </td>
                     <td className="py-3 px-3 text-center text-slate-600">{p.unit}</td>
                     <td className="py-3 px-3 font-mono text-slate-700 text-left">
-                      {formatCurrency(p.buyPrice, settings.currency)}
+                      {formatCurrency(cardex.effectiveBuyPrice, settings.currency)}
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-slate-900 text-left">
                       {formatCurrency(p.salePrice, settings.currency)}
+                    </td>
+                    <td className="py-3 px-3 text-center font-mono font-semibold text-indigo-700">
+                      {cardex.initialStock > 0 ? `${cardex.initialStock} ${p.unit}` : '۰'}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span
@@ -536,9 +547,12 @@ export const ProductsInventoryView: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">قیمت خرید ({settings.currency})</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={buyPrice}
-                    onChange={(e) => setBuyPrice(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setBuyPrice(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
                     required
                   />
@@ -546,9 +560,12 @@ export const ProductsInventoryView: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">قیمت فروش ({settings.currency})</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={salePrice}
-                    onChange={(e) => setSalePrice(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setSalePrice(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left font-bold"
                     required
                   />
@@ -559,9 +576,12 @@ export const ProductsInventoryView: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">موجودی اول دوره در انبار</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={stockQuantity}
-                    onChange={(e) => setStockQuantity(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setStockQuantity(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-center font-bold"
                     required
                   />
@@ -569,9 +589,12 @@ export const ProductsInventoryView: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">نقطه سفارش بحرانی (حداقل)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={reorderPoint}
-                    onChange={(e) => setReorderPoint(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setReorderPoint(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-center"
                     required
                   />
@@ -741,13 +764,15 @@ export const ProductsInventoryView: React.FC = () => {
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <input
-                              type="number"
-                              min={0}
+                              type="text"
+                              inputMode="numeric"
+                              dir="ltr"
                               value={counted}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) =>
                                 setCountedQuantities((prev) => ({
                                   ...prev,
-                                  [p.id]: Math.max(0, parseFloat(e.target.value) || 0),
+                                  [p.id]: Math.max(0, parseNumberFromInput(e.target.value)),
                                 }))
                               }
                               className="w-24 bg-white border border-slate-300 focus:border-indigo-600 rounded-lg p-1.5 font-mono font-bold text-center"

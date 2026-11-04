@@ -11,9 +11,11 @@ interface ContactCardexModalProps {
   onClose: () => void;
 }
 
-export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact, onClose }) => {
-  const { invoices, vouchers, expenses, financialTransactions, cheques, settings } = useAccounting();
+export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact: propContact, onClose }) => {
+  const { contacts, invoices, vouchers, expenses, financialTransactions, cheques, settings } = useAccounting();
   const [txModalType, setTxModalType] = useState<'receipt' | 'payment' | null>(null);
+
+  const contact = contacts.find((c) => c.id === propContact.id) || propContact;
 
   const cardex = calculateContactCardex(
     contact,
@@ -42,7 +44,7 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
                 کاردکس ریز حساب و صورتحساب: {contact.name} ({contact.code})
               </h3>
               <span className="text-[11px] text-slate-500">
-                شامل کلیه فاکتورهای فروش، خرید، دریافت‌ها، پرداخت‌ها، چک‌ها و اسناد دستی
+                شامل مانده اول دوره، فاکتورهای فروش، خرید، دریافت‌ها، پرداخت‌ها، چک‌ها و اسناد دستی
               </span>
             </div>
           </div>
@@ -107,24 +109,40 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
             </div>
 
             {/* Contact Information Bar */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded border border-slate-300 text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 bg-slate-50 p-2.5 rounded border border-slate-300 text-xs">
               <div>نام طرف حساب: <strong>{contact.name}</strong></div>
               <div>تلفن: <span className="font-mono">{contact.phone || contact.mobile || '-'}</span></div>
               <div>کد اقتصادی/ملی: <span className="font-mono">{contact.nationalCode || contact.economicCode || '-'}</span></div>
               <div>سقف اعتبار: <span className="font-mono">{formatCurrency(contact.creditLimit, settings.currency)}</span></div>
-              {contact.address && <div className="col-span-2 md:col-span-4">نشانی: {contact.address}</div>}
+              <div>
+                مانده اول دوره:{' '}
+                <strong className="font-mono text-indigo-700">
+                  {cardex.initialBalance > 0
+                    ? `${formatCurrency(cardex.initialBalance, settings.currency)} (${cardex.initialBalanceType === 'credit' ? 'بستانکار' : 'بدهکار'})`
+                    : '۰'}
+                </strong>
+              </div>
+              {contact.address && <div className="col-span-2 md:col-span-5">نشانی: {contact.address}</div>}
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs">
+                <div className="text-amber-900 font-semibold">مانده اول دوره (افتتاحیه)</div>
+                <div className="text-sm font-bold font-mono text-amber-900 mt-1">
+                  {cardex.initialBalance > 0
+                    ? `${formatCurrency(cardex.initialBalance, settings.currency)} (${cardex.initialBalanceType === 'credit' ? 'بستانکار' : 'بدهکار'})`
+                    : formatCurrency(0, settings.currency)}
+                </div>
+              </div>
               <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded text-xs">
-                <div className="text-indigo-800 font-semibold">مجموع گردش بدهکار (خریدها/بدهی)</div>
+                <div className="text-indigo-800 font-semibold">مجموع گردش بدهکار</div>
                 <div className="text-sm font-bold font-mono text-indigo-900 mt-1">
                   {formatCurrency(cardex.totalDebit, settings.currency)}
                 </div>
               </div>
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
-                <div className="text-emerald-800 font-semibold">مجموع گردش بستانکار (پرداخت‌ها)</div>
+                <div className="text-emerald-800 font-semibold">مجموع گردش بستانکار</div>
                 <div className="text-sm font-bold font-mono text-emerald-900 mt-1">
                   {formatCurrency(cardex.totalCredit, settings.currency)}
                 </div>
@@ -156,7 +174,14 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {cardex.rows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
+                    <tr
+                      key={row.id || idx}
+                      className={
+                        row.id === 'init-bal'
+                          ? 'bg-indigo-50/70 font-bold'
+                          : 'hover:bg-slate-50'
+                      }
+                    >
                       <td className="py-2 px-2 text-center border-l border-slate-200 font-mono text-slate-500">
                         {idx + 1}
                       </td>
@@ -187,7 +212,7 @@ export const ContactCardexModal: React.FC<ContactCardexModalProps> = ({ contact,
                 <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-400">
                   <tr>
                     <td colSpan={4} className="py-2 px-3 border-l border-slate-300 text-right">
-                      جمع کل گردش‌ها:
+                      جمع کل گردش‌ها (شامل مانده اول دوره):
                     </td>
                     <td className="py-2 px-3 border-l border-slate-300 text-left font-mono text-indigo-900">
                       {cardex.totalDebit.toLocaleString()}

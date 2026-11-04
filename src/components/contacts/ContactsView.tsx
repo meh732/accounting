@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAccounting } from '../../context/AccountingContext';
 import { Contact, ContactType } from '../../types/accounting';
 import { calculateContactCardex } from '../../utils/financialCalculations';
-import { formatCurrency } from '../../utils/dateUtils';
+import { formatCurrency, parseNumberFromInput } from '../../utils/dateUtils';
 import { ContactCardexModal } from './ContactCardexModal';
 import { ReceiptPaymentModal } from '../finance/ReceiptPaymentModal';
 import {
@@ -311,6 +311,7 @@ export const ContactsView: React.FC = () => {
                 <th className="py-3 px-3 min-w-[200px]">نام و نام خانوادگی / شرکت</th>
                 <th className="py-3 px-3 w-28">نوع طرف حساب</th>
                 <th className="py-3 px-3 w-32 font-mono">تلفن تماس</th>
+                <th className="py-3 px-3 w-36 text-left">مانده اول دوره</th>
                 <th className="py-3 px-3 w-36 text-left">سقف اعتبار ({settings.currency})</th>
                 <th className="py-3 px-3 text-left w-40">مانده حساب جاری</th>
                 <th className="py-3 px-3 text-center w-36">کاردکس و عملیات</th>
@@ -318,7 +319,7 @@ export const ContactsView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredContacts.map((c) => {
-                const { finalBalance, finalBalanceType } = calculateContactCardex(
+                const { finalBalance, finalBalanceType, initialBalance: initBal, initialBalanceType: initType } = calculateContactCardex(
                   c,
                   invoices,
                   vouchers,
@@ -361,6 +362,15 @@ export const ContactsView: React.FC = () => {
                     </td>
                     <td className="py-3 px-3 font-mono text-slate-600">
                       {c.phone || c.mobile || '-'}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-left text-slate-700">
+                      {initBal > 0 ? (
+                        <span className={initType === 'credit' ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-semibold'}>
+                          {initBal.toLocaleString()} ({initType === 'credit' ? 'بستانکار' : 'بدهکار'})
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">۰</span>
+                      )}
                     </td>
                     <td className="py-3 px-3 font-mono text-slate-700 text-left">
                       {formatCurrency(c.creditLimit, settings.currency)}
@@ -508,9 +518,12 @@ export const ContactsView: React.FC = () => {
                     </label>
                     <div className="flex gap-1.5">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
+                        dir="ltr"
                         value={claimedAmount}
-                        onChange={(e) => setClaimedAmount(parseFloat(e.target.value) || 0)}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setClaimedAmount(parseNumberFromInput(e.target.value))}
                         className="w-full bg-white border border-indigo-300 rounded-lg p-2 font-mono font-bold text-left text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                       <select
@@ -743,9 +756,12 @@ export const ContactsView: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">سقف اعتبار نسیه ({settings.currency})</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={creditLimit}
-                    onChange={(e) => setCreditLimit(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setCreditLimit(parseNumberFromInput(e.target.value))}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
                   />
                 </div>
@@ -753,15 +769,18 @@ export const ContactsView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">مانده اول دوره</label>
                   <div className="flex gap-1">
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      dir="ltr"
                       value={initialBalance}
-                      onChange={(e) => setInitialBalance(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setInitialBalance(parseNumberFromInput(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-left"
                     />
                     <select
                       value={initialBalanceType}
                       onChange={(e) => setInitialBalanceType(e.target.value as any)}
-                      className="bg-slate-50 border border-slate-300 rounded-lg px-2 text-xs"
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-2 text-xs font-bold"
                     >
                       <option value="debit">بدهکار</option>
                       <option value="credit">بستانکار</option>

@@ -10,8 +10,10 @@ interface BankCardexModalProps {
   onClose: () => void;
 }
 
-export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClose }) => {
-  const { invoices, expenses, vouchers, financialTransactions, cheques, settings } = useAccounting();
+export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account: propAccount, onClose }) => {
+  const { bankAccounts, invoices, expenses, vouchers, financialTransactions, cheques, settings } = useAccounting();
+
+  const account = bankAccounts.find((b) => b.id === propAccount.id) || propAccount;
 
   const cardex = calculateBankCardex(
     account,
@@ -47,7 +49,7 @@ export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClo
                 کاردکس ریز تراکنش‌ها و گردش: {account.title}
               </h3>
               <span className="text-[11px] text-slate-500">
-                صورت‌حساب واریزی‌های فاکتورها، پرداخت هزینه‌ها و اسناد دستی
+                صورت‌حساب موجودی اول دوره، واریزی‌های فاکتورها، پرداخت هزینه‌ها و اسناد دستی
               </span>
             </div>
           </div>
@@ -98,23 +100,35 @@ export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClo
             </div>
 
             {/* Account Info Box */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded border border-slate-300 text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 bg-slate-50 p-2.5 rounded border border-slate-300 text-xs">
               <div>عنوان حساب: <strong>{account.title}</strong></div>
               <div>نوع حساب: <span>{accountTypeLabel}</span></div>
-              <div>شماره حساب/کارت: <span className="font-mono">{account.accountNumber || '-'}</span></div>
+              <div>شماره حساب/کارت: <span className="font-mono">{account.accountNumber || account.cardNumber || '-'}</span></div>
               <div>شماره شبا: <span className="font-mono">{account.shebaNumber || '-'}</span></div>
+              <div>
+                موجودی اول دوره:{' '}
+                <strong className="font-mono text-indigo-700">
+                  {formatCurrency(cardex.initialBalance, settings.currency)}
+                </strong>
+              </div>
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded text-xs">
+                <div className="text-indigo-800 font-semibold">موجودی اول دوره (افتتاحیه)</div>
+                <div className="text-sm font-bold font-mono text-indigo-900 mt-1">
+                  {formatCurrency(cardex.initialBalance, settings.currency)}
+                </div>
+              </div>
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
-                <div className="text-emerald-800 font-semibold">مجموع واریزی‌ها (ورودی وجه)</div>
+                <div className="text-emerald-800 font-semibold">واریزی‌های طی دوره</div>
                 <div className="text-sm font-bold font-mono text-emerald-900 mt-1">
-                  {formatCurrency(cardex.totalInflow, settings.currency)}
+                  {formatCurrency(cardex.periodInflow, settings.currency)}
                 </div>
               </div>
               <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-xs">
-                <div className="text-rose-800 font-semibold">مجموع برداشت‌ها (خروجی وجه)</div>
+                <div className="text-rose-800 font-semibold">برداشت‌های طی دوره</div>
                 <div className="text-sm font-bold font-mono text-rose-900 mt-1">
                   {formatCurrency(cardex.totalOutflow, settings.currency)}
                 </div>
@@ -143,7 +157,14 @@ export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClo
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {cardex.rows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
+                    <tr
+                      key={row.id || idx}
+                      className={
+                        row.id === 'init-bank'
+                          ? 'bg-indigo-50/70 font-bold'
+                          : 'hover:bg-slate-50'
+                      }
+                    >
                       <td className="py-2 px-2 text-center border-l border-slate-200 font-mono text-slate-500">
                         {idx + 1}
                       </td>
@@ -171,7 +192,7 @@ export const BankCardexModal: React.FC<BankCardexModalProps> = ({ account, onClo
                 <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-400">
                   <tr>
                     <td colSpan={4} className="py-2 px-3 border-l border-slate-300 text-right">
-                      جمع کل گردش‌ها:
+                      جمع کل گردش‌ها (شامل موجودی اول دوره):
                     </td>
                     <td className="py-2 px-3 border-l border-slate-300 text-left font-mono text-emerald-900">
                       {cardex.totalInflow.toLocaleString()}

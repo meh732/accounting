@@ -38,24 +38,27 @@ export function calculateContactCardex(
   cheques: ChequeRecord[] = []
 ): {
   rows: ContactCardexRow[];
+  initialBalance: number;
+  initialBalanceType: 'debit' | 'credit' | 'none';
   totalDebit: number;
   totalCredit: number;
   finalBalance: number;
   finalBalanceType: 'بدهکار' | 'بستانکار' | 'تسویه';
 } {
   let rows: ContactCardexRow[] = [];
+  const initBal = Number(contact.initialBalance) || 0;
 
-  // 1. Initial balance
-  if (contact.initialBalance > 0) {
-    const isDebit = contact.initialBalanceType === 'debit';
+  // 1. Initial balance (موجودی / مانده اول دوره شخص)
+  if (initBal > 0) {
+    const isDebit = contact.initialBalanceType !== 'credit';
     rows.push({
       id: 'init-bal',
-      date: contact.createdAt || '1403/01/01',
+      date: 'ابتدای دوره',
       documentType: 'سند افتتاحیه',
-      documentNumber: '-',
-      description: `مانده اول دوره شخص (${isDebit ? 'بدهکار' : 'بستانکار'})`,
-      debit: isDebit ? contact.initialBalance : 0,
-      credit: !isDebit ? contact.initialBalance : 0,
+      documentNumber: 'افتتاحیه',
+      description: `مانده اول دوره طرف‌حساب (${isDebit ? 'بدهکار' : 'بستانکار'})`,
+      debit: isDebit ? initBal : 0,
+      credit: !isDebit ? initBal : 0,
       balance: 0,
       balanceType: isDebit ? 'بدهکار' : 'بستانکار',
     });
@@ -293,8 +296,12 @@ export function calculateContactCardex(
       });
     });
 
-  // Sort chronologically by date
-  rows.sort((a, b) => a.date.localeCompare(b.date));
+  // Sort chronologically by date, keeping initial balance always at row #1
+  rows.sort((a, b) => {
+    if (a.id.startsWith('init-')) return -1;
+    if (b.id.startsWith('init-')) return 1;
+    return a.date.localeCompare(b.date);
+  });
 
   // Compute running balance
   let running = 0;
@@ -318,7 +325,15 @@ export function calculateContactCardex(
   const finalBalanceType: 'بدهکار' | 'بستانکار' | 'تسویه' =
     running > 0 ? 'بدهکار' : running < 0 ? 'بستانکار' : 'تسویه';
 
-  return { rows, totalDebit, totalCredit, finalBalance, finalBalanceType };
+  return {
+    rows,
+    initialBalance: initBal,
+    initialBalanceType: initBal > 0 ? (contact.initialBalanceType === 'credit' ? 'credit' : 'debit') : 'none',
+    totalDebit,
+    totalCredit,
+    finalBalance,
+    finalBalanceType,
+  };
 }
 
 export interface BankCardexRow {
@@ -339,20 +354,28 @@ export function calculateBankCardex(
   vouchers: JournalVoucher[],
   financialTransactions: FinancialTransaction[] = [],
   cheques: ChequeRecord[] = []
-): { rows: BankCardexRow[]; totalInflow: number; totalOutflow: number; currentBalance: number } {
+): {
+  rows: BankCardexRow[];
+  initialBalance: number;
+  periodInflow: number;
+  totalInflow: number;
+  totalOutflow: number;
+  currentBalance: number;
+} {
   let rows: BankCardexRow[] = [];
+  const initBankBal = Number(bank.initialBalance) || 0;
 
-  // Initial balance
-  if (bank.initialBalance > 0) {
+  // Initial balance (موجودی اول دوره بانک / صندوق)
+  if (initBankBal > 0) {
     rows.push({
       id: 'init-bank',
-      date: '1403/01/01',
-      documentType: 'موجودی افتتاحیه',
-      documentNumber: '-',
-      description: `موجودی اولیه ${bank.title}`,
-      inflow: bank.initialBalance,
+      date: 'ابتدای دوره',
+      documentType: 'موجودی اول دوره',
+      documentNumber: 'افتتاحیه',
+      description: `موجودی اول دوره (${bank.title})`,
+      inflow: initBankBal,
       outflow: 0,
-      balance: bank.initialBalance,
+      balance: initBankBal,
     });
   }
 
@@ -536,7 +559,11 @@ export function calculateBankCardex(
       });
     });
 
-  rows.sort((a, b) => a.date.localeCompare(b.date));
+  rows.sort((a, b) => {
+    if (a.id.startsWith('init-')) return -1;
+    if (b.id.startsWith('init-')) return 1;
+    return a.date.localeCompare(b.date);
+  });
 
   let running = 0;
   let totalInflow = 0;
@@ -552,7 +579,14 @@ export function calculateBankCardex(
     };
   });
 
-  return { rows, totalInflow, totalOutflow, currentBalance: running };
+  return {
+    rows,
+    initialBalance: initBankBal,
+    periodInflow: Math.max(0, totalInflow - initBankBal),
+    totalInflow,
+    totalOutflow,
+    currentBalance: running,
+  };
 }
 
 export interface ProductCardexRow {
@@ -577,20 +611,27 @@ export function calculateProductCardex(
   invoices: Invoice[]
 ): {
   rows: ProductCardexRow[];
+  initialStock: number;
+  periodInQty: number;
   totalInQty: number;
   totalOutQty: number;
   currentStock: number;
   currentStockValue: number;
+  effectiveBuyPrice: number;
 } {
   let rows: ProductCardexRow[] = [];
 
-  // Calculate net movement from invoices and stockAdjustments to handle legacy products where initialStock wasn't explicitly set
+  // Calculate net movement from invoices and stockAdjustments, and find latest purchase unitPrice if product.buyPrice is 0
   let invoiceAndAdjDelta = 0;
+  let latestPurchasePrice = 0;
   invoices.forEach((inv) => {
     const item = inv.items.find((i) => i.productId === product.id);
     if (!item) return;
     if (inv.type === 'purchase' || inv.type === 'sales_return') {
       invoiceAndAdjDelta += item.quantity;
+      if (inv.type === 'purchase' && item.unitPrice > 0) {
+        latestPurchasePrice = item.unitPrice;
+      }
     } else if (inv.type === 'sales' || inv.type === 'purchase_return') {
       invoiceAndAdjDelta -= item.quantity;
     }
@@ -599,27 +640,33 @@ export function calculateProductCardex(
     invoiceAndAdjDelta += adj.diffQty;
   });
 
-  const effectiveInitialStock =
-    product.initialStock !== undefined && product.initialStock !== null
-      ? product.initialStock
-      : Math.max(0, product.stockQuantity - invoiceAndAdjDelta);
+  const baseBuyPrice =
+    Number(product.buyPrice) > 0
+      ? Number(product.buyPrice)
+      : latestPurchasePrice > 0
+      ? latestPurchasePrice
+      : 0;
 
-  // 1. Initial stock
+  const impliedInitialStock = Math.max(0, (Number(product.stockQuantity) || 0) - invoiceAndAdjDelta);
+  const explicitInitStock = Number(product.initialStock) || 0;
+  const effectiveInitialStock = explicitInitStock > 0 ? explicitInitStock : impliedInitialStock;
+
+  // 1. Initial stock (موجودی اول دوره انبار)
   if (effectiveInitialStock > 0) {
     rows.push({
       id: 'init-stock',
-      date: '1403/01/01',
+      date: 'ابتدای دوره',
       documentType: 'موجودی اول دوره',
-      documentNumber: '-',
+      documentNumber: 'افتتاحیه',
       contactName: 'انبار مرکزی',
       inQuantity: effectiveInitialStock,
-      inUnitPrice: product.buyPrice,
-      inTotalPrice: effectiveInitialStock * product.buyPrice,
+      inUnitPrice: baseBuyPrice,
+      inTotalPrice: effectiveInitialStock * baseBuyPrice,
       outQuantity: 0,
       outUnitPrice: 0,
       outTotalPrice: 0,
       remainingQuantity: effectiveInitialStock,
-      remainingValue: effectiveInitialStock * product.buyPrice,
+      remainingValue: effectiveInitialStock * baseBuyPrice,
     });
   }
 
@@ -720,17 +767,32 @@ export function calculateProductCardex(
     });
   });
 
-  rows.sort((a, b) => a.date.localeCompare(b.date));
+  rows.sort((a, b) => {
+    if (a.id.startsWith('init-')) return -1;
+    if (b.id.startsWith('init-')) return 1;
+    return a.date.localeCompare(b.date);
+  });
 
   let runningQty = 0;
   let totalInQty = 0;
   let totalOutQty = 0;
+  let runningUnitCost = baseBuyPrice;
 
   rows = rows.map((r) => {
+    if (r.inQuantity > 0 && r.inUnitPrice > 0) {
+      if (runningQty <= 0 || runningUnitCost <= 0) {
+        runningUnitCost = r.inUnitPrice;
+      } else {
+        runningUnitCost = Math.round(
+          (runningQty * runningUnitCost + r.inQuantity * r.inUnitPrice) / (runningQty + r.inQuantity)
+        );
+      }
+    }
     totalInQty += r.inQuantity;
     totalOutQty += r.outQuantity;
     runningQty += r.inQuantity - r.outQuantity;
-    const remainingValue = runningQty * product.buyPrice;
+    const unitCostForValuation = runningUnitCost > 0 ? runningUnitCost : baseBuyPrice;
+    const remainingValue = Math.round(runningQty * unitCostForValuation);
     return {
       ...r,
       remainingQuantity: runningQty,
@@ -738,12 +800,17 @@ export function calculateProductCardex(
     };
   });
 
+  const finalUnitCost = runningUnitCost > 0 ? runningUnitCost : baseBuyPrice;
+
   return {
     rows,
+    initialStock: effectiveInitialStock,
+    periodInQty: Math.max(0, totalInQty - effectiveInitialStock),
     totalInQty,
     totalOutQty,
     currentStock: runningQty,
-    currentStockValue: runningQty * product.buyPrice,
+    currentStockValue: Math.round(runningQty * finalUnitCost),
+    effectiveBuyPrice: finalUnitCost,
   };
 }
 
@@ -772,12 +839,19 @@ export function calculateTrialBalance(
   isBalanced: boolean;
 } {
   // Aggregate debit and credit turnover per accountCode from all permanent or draft vouchers
+  const initDebitMap = new Map<string, number>();
+  const initCreditMap = new Map<string, number>();
   const debitMap = new Map<string, number>();
   const creditMap = new Map<string, number>();
 
   vouchers.forEach((v) => {
+    const isOpening = v.type === 'opening';
     v.items.forEach((item) => {
       const code = item.accountCode;
+      if (isOpening) {
+        initDebitMap.set(code, (initDebitMap.get(code) || 0) + item.debit);
+        initCreditMap.set(code, (initCreditMap.get(code) || 0) + item.credit);
+      }
       debitMap.set(code, (debitMap.get(code) || 0) + item.debit);
       creditMap.set(code, (creditMap.get(code) || 0) + item.credit);
     });
@@ -785,10 +859,21 @@ export function calculateTrialBalance(
 
   // Calculate totals for each account level (moein, kol, group)
   const items: TrialBalanceItem[] = chartOfAccounts.map((acc) => {
-    // Find all matching items that start with or equal this code
+    let initialDebit = 0;
+    let initialCredit = 0;
     let turnoverDebit = 0;
     let turnoverCredit = 0;
 
+    for (const [code, deb] of initDebitMap.entries()) {
+      if (code === acc.code || code.startsWith(acc.code)) {
+        initialDebit += deb;
+      }
+    }
+    for (const [code, crd] of initCreditMap.entries()) {
+      if (code === acc.code || code.startsWith(acc.code)) {
+        initialCredit += crd;
+      }
+    }
     for (const [code, deb] of debitMap.entries()) {
       if (code === acc.code || code.startsWith(acc.code)) {
         turnoverDebit += deb;
@@ -809,8 +894,8 @@ export function calculateTrialBalance(
       title: acc.title,
       level: acc.level,
       parentCode: acc.parentCode,
-      initialDebit: 0,
-      initialCredit: 0,
+      initialDebit,
+      initialCredit,
       turnoverDebit,
       turnoverCredit,
       finalDebit,
@@ -884,19 +969,43 @@ export function calculateProfitAndLoss(
   // 4. Net Sales
   const netSales = Math.max(0, grossSales - salesReturns - salesDiscounts);
 
+  // Map latest purchase unitPrice per product as fallback if prd.buyPrice is 0
+  const purchasePriceMap = new Map<string, number>();
+  invoices
+    .filter((i) => i.type === 'purchase')
+    .forEach((inv) => {
+      inv.items.forEach((it) => {
+        if (it.productId && it.unitPrice > 0) {
+          purchasePriceMap.set(it.productId, it.unitPrice);
+        }
+      });
+    });
+
   // 5. Cost of Goods Sold (COGS)
   let cogs = 0;
   salesInvoices.forEach((inv) => {
     inv.items.forEach((item) => {
       const prd = products.find((p) => p.id === item.productId);
-      const buyPrice = prd && prd.buyPrice > 0 ? prd.buyPrice : item.unitPrice * 0.75;
+      const fallbackPurPrice = purchasePriceMap.get(item.productId) || 0;
+      const buyPrice =
+        prd && prd.buyPrice > 0
+          ? prd.buyPrice
+          : fallbackPurPrice > 0
+          ? fallbackPurPrice
+          : item.unitPrice * 0.75;
       cogs += item.quantity * buyPrice;
     });
   });
   salesReturnInvoices.forEach((inv) => {
     inv.items.forEach((item) => {
       const prd = products.find((p) => p.id === item.productId);
-      const buyPrice = prd && prd.buyPrice > 0 ? prd.buyPrice : item.unitPrice * 0.75;
+      const fallbackPurPrice = purchasePriceMap.get(item.productId) || 0;
+      const buyPrice =
+        prd && prd.buyPrice > 0
+          ? prd.buyPrice
+          : fallbackPurPrice > 0
+          ? fallbackPurPrice
+          : item.unitPrice * 0.75;
       cogs = Math.max(0, cogs - item.quantity * buyPrice);
     });
   });
@@ -904,8 +1013,10 @@ export function calculateProfitAndLoss(
   // 5b. Stocktaking Adjustments (اضافات و کسری انبارگردانی)
   let inventoryAdjustmentNet = 0;
   products.forEach((prd) => {
+    const fallbackPurPrice = purchasePriceMap.get(prd.id) || 0;
+    const effectiveCost = prd.buyPrice > 0 ? prd.buyPrice : fallbackPurPrice;
     (prd.stockAdjustments || []).forEach((adj) => {
-      inventoryAdjustmentNet += adj.diffQty * (adj.unitPrice || adj.unitCost || prd.buyPrice || 0);
+      inventoryAdjustmentNet += adj.diffQty * (adj.unitPrice || adj.unitCost || effectiveCost || 0);
     });
   });
 

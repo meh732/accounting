@@ -775,14 +775,226 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const cat = prdData.categoryId
           ? productCategories.find((c) => c.id === prdData.categoryId)
           : undefined;
+
+        // Calculate net movements from invoices and stocktaking for this product
+        let netMovement = 0;
+        invoices.forEach((inv) => {
+          const item = inv.items.find((i) => i.productId === p.id);
+          if (!item) return;
+          if (inv.type === 'purchase' || inv.type === 'sales_return') netMovement += item.quantity;
+          else if (inv.type === 'sales' || inv.type === 'purchase_return') netMovement -= item.quantity;
+        });
+        (prdData.stockAdjustments || p.stockAdjustments || []).forEach((adj) => {
+          netMovement += adj.diffQty;
+        });
+
+        let nextInitialStock = p.initialStock ?? Math.max(0, p.stockQuantity - netMovement);
+        let nextStockQuantity = p.stockQuantity;
+
+        if (prdData.initialStock !== undefined) {
+          nextInitialStock = Math.max(0, Number(prdData.initialStock) || 0);
+          nextStockQuantity =
+            prdData.stockQuantity !== undefined
+              ? Math.max(0, Number(prdData.stockQuantity) || 0)
+              : Math.max(0, nextInitialStock + netMovement);
+        } else if (prdData.stockQuantity !== undefined) {
+          nextStockQuantity = Math.max(0, Number(prdData.stockQuantity) || 0);
+          nextInitialStock = Math.max(0, nextStockQuantity - netMovement);
+        }
+
         return {
           ...p,
           ...prdData,
+          initialStock: nextInitialStock,
+          stockQuantity: nextStockQuantity,
           categoryTitle: prdData.categoryTitle || cat?.title || p.categoryTitle,
         };
       })
     );
   };
+
+  // Auto-heal products with buyPrice=0 if purchase invoices exist, and auto-sync System Opening Balance Voucher
+  useEffect(() => {
+    // 1. Heal product buyPrice if 0 but purchased in an invoice
+    let needsProductHeal = false;
+    const healedProducts = products.map((p) => {
+      let latestPurPrice = 0;
+      let netMove = 0;
+      invoices.forEach((inv) => {
+        const it = inv.items.find((i) => i.productId === p.id);
+        if (!it) return;
+        if (inv.type === 'purchase' || inv.type === 'sales_return') {
+          netMove += it.quantity;
+          if (inv.type === 'purchase' && it.unitPrice > 0) {
+            latestPurPrice = it.unitPrice;
+          }
+        } else if (inv.type === 'sales' || inv.type === 'purchase_return') {
+          netMove -= it.quantity;
+        }
+      });
+      (p.stockAdjustments || []).forEach((adj) => {
+        netMove += adj.diffQty;
+      });
+
+      const impliedInit = Math.max(0, (Number(p.stockQuantity) || 0) - netMove);
+      const shouldHealBuyPrice = (!p.buyPrice || p.buyPrice <= 0) && latestPurPrice > 0;
+      const shouldHealInitStock = (p.initialStock === undefined || p.initialStock === null || (p.initialStock === 0 && impliedInit > 0)) && impliedInit > 0;
+
+      if (shouldHealBuyPrice || shouldHealInitStock) {
+        needsProductHeal = true;
+        return {
+          ...p,
+          buyPrice: shouldHealBuyPrice ? latestPurPrice : p.buyPrice,
+          initialStock: shouldHealInitStock ? impliedInit : p.initialStock,
+        };
+      }
+      return p;
+    });
+
+    if (needsProductHeal) {
+      setProducts(healedProducts);
+      return;
+    }
+
+    // 2. Sync Opening Balance Voucher (سند افتتاحیه اول دوره) for all non-zero initial balances in Banks, Products, and Contacts
+    if (settings.autoGenerateVouchers === false) return;
+
+    const openingItems: VoucherItem[] = [];
+
+    bankAccounts.forEach((b) => {
+      const initBal = Number(b.initialBalance) || 0;
+      if (initBal > 0) {
+        const accCode = b.type === 'cash' ? '10101' : b.type === 'pos' ? '10104' : '10102';
+        const accTitle =
+          b.type === 'cash'
+            ? 'صندوق‌ها'
+            : b.type === 'pos'
+            ? 'دستگاه‌های کارتخوان (POS)'
+            : 'حساب‌های بانکی ریالی';
+        openingItems.push({
+          id: `vi-open-bank-${b.id}`,
+          accountCode: accCode,
+          accountTitle: accTitle,
+          tafsiliId: b.id,
+          tafsiliTitle: b.title,
+          description: `موجودی اول دوره ${b.title}`,
+          debit: initBal,
+          credit: 0,
+        });
+      }
+    });
+
+    products.forEach((p) => {
+      let netMove = 0;
+      invoices.forEach((inv) => {
+        const it = inv.items.find((i) => i.productId === p.id);
+        if (!it) return;
+        if (inv.type === 'purchase' || inv.type === 'sales_return') netMove += it.quantity;
+        else if (inv.type === 'sales' || inv.type === 'purchase_return') netMove -= it.quantity;
+      });
+      (p.stockAdjustments || []).forEach((adj) => {
+        netMove += adj.diffQty;
+      });
+      const impliedInit = Math.max(0, (Number(p.stockQuantity) || 0) - netMove);
+      const initStock = (Number(p.initialStock) || 0) > 0 ? Number(p.initialStock) : impliedInit;
+      const unitCost = Number(p.buyPrice) || 0;
+      const totalVal = Math.round(initStock * unitCost);
+      if (totalVal > 0) {
+        openingItems.push({
+          id: `vi-open-prd-${p.id}`,
+          accountCode: '10401',
+          accountTitle: 'موجودی کالای انبار مرکزی',
+          tafsiliId: p.id,
+          tafsiliTitle: p.title,
+          description: `موجودی اول دوره انبار: ${p.title} (${initStock} ${p.unit})`,
+          debit: totalVal,
+          credit: 0,
+        });
+      }
+    });
+
+    contacts.forEach((c) => {
+      const initBal = Number(c.initialBalance) || 0;
+      if (initBal > 0) {
+        const isCredit = c.initialBalanceType === 'credit';
+        openingItems.push({
+          id: `vi-open-cnt-${c.id}`,
+          accountCode: isCredit ? '30101' : '10301',
+          accountTitle: isCredit
+            ? 'حساب‌های پرداختنی تجاری (تامین‌کنندگان)'
+            : 'حساب‌های دریافتنی تجاری (مشتریان)',
+          tafsiliId: c.id,
+          contactId: c.id,
+          tafsiliTitle: c.name,
+          description: `مانده ${isCredit ? 'بستانکار' : 'بدهکار'} اول دوره طرف‌حساب (${c.name})`,
+          debit: isCredit ? 0 : initBal,
+          credit: isCredit ? initBal : 0,
+        });
+      }
+    });
+
+    const totalOpenDeb = openingItems.reduce((s, i) => s + i.debit, 0);
+    const totalOpenCrd = openingItems.reduce((s, i) => s + i.credit, 0);
+    const diff = totalOpenDeb - totalOpenCrd;
+
+    if (openingItems.length > 0 && Math.abs(diff) > 0) {
+      openingItems.push({
+        id: 'vi-open-capital',
+        accountCode: '40101',
+        accountTitle: 'سرمایه اولیه',
+        tafsiliTitle: 'حساب سرمایه و تراز افتتاحیه',
+        description: 'تراز سند افتتاحیه و سرمایه اولیه اول دوره',
+        debit: diff < 0 ? Math.abs(diff) : 0,
+        credit: diff > 0 ? diff : 0,
+      });
+    }
+
+    const existingOpening = vouchers.find(
+      (v) =>
+        v.id === 'vch-101' ||
+        v.id === 'vch-opening-auto' ||
+        (v.type === 'opening' && !v.referenceNumber?.startsWith('OPENING-'))
+    );
+
+    const serializeItems = (arr: VoucherItem[]) =>
+      arr.map((i) => `${i.accountCode}:${i.tafsiliId || i.tafsiliTitle}:${i.debit}:${i.credit}`).join('|');
+
+    if (openingItems.length === 0) {
+      if (existingOpening && existingOpening.isAutoGenerated) {
+        setVouchers((prev) => prev.filter((v) => v.id !== existingOpening.id));
+      }
+      return;
+    }
+
+    const currentSig = existingOpening ? serializeItems(existingOpening.items) : '';
+    const nextSig = serializeItems(openingItems);
+
+    if (currentSig !== nextSig) {
+      const activeYear = settings.financialYear || '1403';
+      const updatedOpeningVoucher: JournalVoucher = {
+        id: existingOpening?.id || 'vch-opening-auto',
+        voucherNumber: existingOpening?.voucherNumber || 101,
+        date: existingOpening?.date || `${activeYear}/01/01`,
+        gregorianDate: existingOpening?.gregorianDate || new Date().toISOString().split('T')[0],
+        referenceNumber: existingOpening?.referenceNumber || 'OPEN-INIT',
+        description: `سند افتتاحیه اتوماتیک اول دوره (بانک‌ها، صندوق، موجودی اول دوره انبار و اشخاص)`,
+        type: 'opening',
+        status: 'permanent',
+        isAutoGenerated: true,
+        sourceType: 'manual',
+        createdAt: existingOpening?.createdAt || getCurrentShamsiDate(),
+        items: openingItems,
+      };
+
+      setVouchers((prev) => {
+        const exists = prev.some((v) => v.id === updatedOpeningVoucher.id);
+        if (exists) {
+          return prev.map((v) => (v.id === updatedOpeningVoucher.id ? updatedOpeningVoucher : v));
+        }
+        return [...prev, updatedOpeningVoucher];
+      });
+    }
+  }, [bankAccounts, products, contacts, invoices, settings.autoGenerateVouchers]);
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
@@ -1417,10 +1629,11 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const updatedInv: Invoice = { ...oldInv, ...invData };
 
-    // Sync product stock quantities (revert old, apply new)
+    // Sync product stock quantities (revert old, apply new) and buyPrice on purchase
     setProducts((prevProducts) =>
       prevProducts.map((p) => {
         let stock = p.stockQuantity;
+        let updatedBuyPrice = p.buyPrice;
         const oldItem = oldInv.items.find((i) => i.productId === p.id);
         if (oldItem) {
           if (oldInv.type === 'sales') stock += oldItem.quantity;
@@ -1431,11 +1644,15 @@ export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newItem = updatedInv.items.find((i) => i.productId === p.id);
         if (newItem) {
           if (updatedInv.type === 'sales') stock -= newItem.quantity;
-          else if (updatedInv.type === 'purchase') stock += newItem.quantity;
-          else if (updatedInv.type === 'sales_return') stock += newItem.quantity;
+          else if (updatedInv.type === 'purchase') {
+            stock += newItem.quantity;
+            if (newItem.unitPrice > 0) {
+              updatedBuyPrice = newItem.unitPrice;
+            }
+          } else if (updatedInv.type === 'sales_return') stock += newItem.quantity;
           else if (updatedInv.type === 'purchase_return') stock -= newItem.quantity;
         }
-        return { ...p, stockQuantity: Math.max(0, stock) };
+        return { ...p, buyPrice: updatedBuyPrice, stockQuantity: Math.max(0, stock) };
       })
     );
 

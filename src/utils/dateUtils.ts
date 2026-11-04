@@ -68,15 +68,20 @@ export function formatNumberWithCommas(val: number | string): string {
   return num.toLocaleString('en-US');
 }
 
-export function parseNumberFromInput(val: string): number {
-  if (!val) return 0;
-  // Convert Persian numbers to English
+export function parseNumberFromInput(val: string | number | undefined | null): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  // Convert Persian (۰-۹) and Arabic-Indic (٠-٩) numbers to English (0-9)
   const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-  let clean = val;
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  let clean = String(val);
   persianDigits.forEach((digit, index) => {
     clean = clean.replace(new RegExp(digit, 'g'), index.toString());
   });
-  clean = clean.replace(/,/g, '').trim();
+  arabicDigits.forEach((digit, index) => {
+    clean = clean.replace(new RegExp(digit, 'g'), index.toString());
+  });
+  clean = clean.replace(/[,٬،\s]/g, '').trim();
   const res = parseFloat(clean);
   return isNaN(res) ? 0 : res;
 }

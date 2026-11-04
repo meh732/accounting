@@ -10,10 +10,12 @@ interface ProductCardexModalProps {
   onClose: () => void;
 }
 
-export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product, onClose }) => {
-  const { invoices, settings } = useAccounting();
+export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product: propProduct, onClose }) => {
+  const { products, invoices, settings } = useAccounting();
+  const product = products.find((p) => p.id === propProduct.id) || propProduct;
 
   const cardex = calculateProductCardex(product, invoices);
+  const effectiveBuyPrice = cardex.effectiveBuyPrice || product.buyPrice || 0;
 
   const handlePrint = () => {
     window.print();
@@ -33,7 +35,7 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
                 کاردکس ریالی و تعدادی انبار کالا: {product.title} ({product.code})
               </h3>
               <span className="text-[11px] text-slate-500">
-                گزارش گردش ورود، خروج، مرجوعی‌ها و مانده موجودی لحظه‌ای انبار
+                گزارش موجودی اول دوره، گردش ورود، خروج، مرجوعی‌ها و مانده موجودی لحظه‌ای انبار
               </span>
             </div>
           </div>
@@ -88,24 +90,31 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
               <div>نام کالا: <strong>{product.title}</strong></div>
               <div>گروه کالا: <span>{product.categoryTitle || 'کالای عمومی'}</span></div>
               <div>واحد سنجش: <span>{product.unit}</span></div>
-              <div>نقطه سفارش بحرانی: <span className="font-mono">{product.reorderPoint || 0} {product.unit}</span></div>
-              <div>آخرین قیمت خرید: <span className="font-mono">{formatCurrency(product.buyPrice, settings.currency)}</span></div>
+              <div>موجودی اول دوره: <span className="font-mono font-bold text-indigo-700">{cardex.initialStock} {product.unit}</span></div>
+              <div>آخرین قیمت خرید: <span className="font-mono font-bold">{formatCurrency(effectiveBuyPrice, settings.currency)}</span></div>
               <div>قیمت مصوب فروش: <span className="font-mono">{formatCurrency(product.salePrice, settings.currency)}</span></div>
+              <div>نقطه سفارش بحرانی: <span className="font-mono">{product.reorderPoint || 0} {product.unit}</span></div>
               {product.warehouseLocation && (
                 <div>محل نگهداری در انبار: <span className="font-bold">{product.warehouseLocation}</span></div>
               )}
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded text-xs">
+                <div className="text-indigo-800 font-semibold">موجودی اول دوره انبار</div>
+                <div className="text-sm font-bold font-mono text-indigo-900 mt-1">
+                  {cardex.initialStock} {product.unit}
+                </div>
+              </div>
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
-                <div className="text-emerald-800 font-semibold">مجموع وارده به انبار (خرید/برگشت/اضافه)</div>
+                <div className="text-emerald-800 font-semibold">وارده طی دوره (خرید/برگشت)</div>
                 <div className="text-sm font-bold font-mono text-emerald-900 mt-1">
-                  {cardex.totalInQty} {product.unit}
+                  {cardex.periodInQty} {product.unit}
                 </div>
               </div>
               <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-xs">
-                <div className="text-rose-800 font-semibold">مجموع صادره از انبار (فروش/کسری)</div>
+                <div className="text-rose-800 font-semibold">صادره طی دوره (فروش/کسری)</div>
                 <div className="text-sm font-bold font-mono text-rose-900 mt-1">
                   {cardex.totalOutQty} {product.unit}
                 </div>
@@ -148,7 +157,7 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {cardex.rows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
+                    <tr key={idx} className={row.id === 'init-stock' ? 'bg-indigo-50/50 font-semibold' : 'hover:bg-slate-50'}>
                       <td className="py-2 px-2 text-center border-l border-slate-200 font-mono text-slate-500">
                         {idx + 1}
                       </td>
@@ -188,7 +197,7 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
                 <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-400">
                   <tr>
                     <td colSpan={4} className="py-2 px-3 border-l border-slate-300 text-right">
-                      مجموع کل:
+                      مجموع کل (شامل موجودی اول دوره و وارده):
                     </td>
                     <td className="py-2 px-2 text-center border-l border-slate-300 font-mono text-emerald-900">
                       {cardex.totalInQty}
@@ -202,7 +211,7 @@ export const ProductCardexModal: React.FC<ProductCardexModalProps> = ({ product,
                       {cardex.currentStock}
                     </td>
                     <td className="py-2 px-2 text-left font-mono text-slate-900 font-black">
-                      {(cardex.currentStock * product.buyPrice).toLocaleString()}
+                      {cardex.currentStockValue.toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
